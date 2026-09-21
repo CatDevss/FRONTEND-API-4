@@ -17,8 +17,18 @@
 
     <!-- 1. Fonte de dados (sempre liberada) -->
     <v-card class="mb-6">
-      <v-card-title>1. Fonte de dados</v-card-title>
-      <v-card-text>
+          <v-card-title class="d-flex align-center">
+        1. Fonte de dados
+        <v-spacer />
+        <v-btn
+          size="small"
+          variant="outlined"
+          prepend-icon="mdi-plus"
+          @click="showDataSourceDialog = true"
+        >
+          Nova fonte
+        </v-btn>
+      </v-card-title>  <v-card-text>
         <v-row>
           <v-col v-for="s in sources" :key="s.id" cols="6" md="3">
             <v-card
@@ -182,7 +192,14 @@
         </v-btn>
       </v-card-text>
     </v-card>
+    <DataSourceDialog v-model="showDataSourceDialog" />
 
+    <ConfirmDialog
+      v-model="showConfirm"
+      title="Iniciar carga"
+      message="Deseja iniciar a carga com os parâmetros selecionados?"
+      @confirm="startLoad"
+    />
     <ConfirmDialog
   v-model="showConfirm"
   title="Iniciar carga"
@@ -197,10 +214,13 @@
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import DataSourceDialog from '@/components/DataSourceDialog.vue'
 
 const router = useRouter()
 
 const TOTAL_MUNICIPALITIES = 399
+
+const showDataSourceDialog = ref(false)
 
 //PUXAR DA BASE DE DADOS
 const sources = [
