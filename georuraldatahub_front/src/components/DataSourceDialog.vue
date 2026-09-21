@@ -11,17 +11,28 @@
       <v-card-actions>
         <v-spacer />
         <v-btn @click="model = false">Cancelar</v-btn>
-        <v-btn color="primary" variant="flat">Salvar fonte</v-btn>
+        <v-btn color="primary" variant="flat" @click="showConfirm = true">Salvar fonte</v-btn>
       </v-card-actions>
+
+      <ConfirmDialog
+        v-model="showConfirm"
+        title="Salvar fonte"
+        message="Deseja salvar a fonte cadastrada?"
+        @confirm="save"
+      />
     </v-card>
   </v-dialog>
 </template>
 
 <script setup lang="ts">
-import { reactive } from 'vue'
+import { reactive, ref } from 'vue'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 
 // Controls whether the popup is open (the parent screen uses it with v-model)
 const model = defineModel<boolean>({ default: false })
+
+// Controls the confirmation popup
+const showConfirm = ref(false)
 
 // Values typed in the form
 const dataSource = reactive({
@@ -31,4 +42,10 @@ const dataSource = reactive({
   url: '',
   description: '',
 })
+
+function save() {
+  // For now it only closes the popup.
+  // Later this is where the data source will be saved in the store.
+  model.value = false
+}
 </script>
