@@ -176,13 +176,19 @@
           color="primary"
           prepend-icon="mdi-lightning-bolt"
           :disabled="!step4Unlocked"
-          @click="startLoad"
+          @click="showConfirm = true"
         >
           Iniciar carga
         </v-btn>
       </v-card-text>
     </v-card>
 
+    <ConfirmDialog
+  v-model="showConfirm"
+  title="Iniciar carga"
+  message="Deseja iniciar a carga com os parâmetros selecionados?"
+  @confirm="startLoad"
+/>
     <v-snackbar v-model="showMessage" :timeout="3000">Carga iniciada (simulação).</v-snackbar>
   </div>
 </template>
@@ -190,6 +196,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 
 const router = useRouter()
 
@@ -221,6 +228,7 @@ const schedule = ref<'now' | 'later' | null>(null)
 const scheduledDate = ref(new Date().toISOString().slice(0, 10))
 const scheduledTime = ref('06:00')
 const showMessage = ref(false)
+const showConfirm = ref(false)
 
 // Each step is unlocked only when the previous one is complete
 const step2Unlocked = computed(() => source.value !== '')
