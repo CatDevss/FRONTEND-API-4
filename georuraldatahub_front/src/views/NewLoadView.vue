@@ -5,13 +5,17 @@
       Configure os parâmetros de ingestão e inicie o pipeline no Airflow
     </p>
 
-    <v-breadcrumbs
-      :items="['1. Fonte', '2. Municípios', '3. Agendamento', '4. Confirmar']"
-      divider="›"
-      class="pa-0 mb-6"
-    />
+    <!-- Indicador de etapas -->
+    <div class="d-flex align-center ga-2 mb-6 text-caption">
+      <template v-for="(step, i) in steps" :key="step.title">
+        <v-icon v-if="i > 0" icon="mdi-chevron-right" size="small" />
+        <span :class="step.unlocked ? 'text-primary font-weight-medium' : 'text-medium-emphasis'">
+          {{ step.title }}
+        </span>
+      </template>
+    </div>
 
-    <!-- 1. Fonte de dados -->
+    <!-- 1. Fonte de dados (sempre liberada) -->
     <v-card class="mb-6">
       <v-card-title>1. Fonte de dados</v-card-title>
       <v-card-text>
@@ -40,10 +44,24 @@
     </v-card>
 
     <!-- 2. Abrangência geográfica -->
-    <v-card class="mb-6">
-      <v-card-title>2. Abrangência geográfica</v-card-title>
+    <v-card class="mb-6" :disabled="!step2Unlocked">
+      <v-card-title>
+        2. Abrangência geográfica
+        <v-icon v-if="!step2Unlocked" icon="mdi-lock-outline" size="small" class="ml-1" />
+      </v-card-title>
+      <v-card-subtitle v-if="!step2Unlocked">
+        Escolha uma fonte de dados para liberar esta etapa.
+      </v-card-subtitle>
       <v-card-text>
-        <v-btn-toggle v-model="scope" mandatory color="primary" variant="outlined" divided class="mb-4">
+        <v-btn-toggle
+          v-model="scope"
+          mandatory
+          color="primary"
+          variant="outlined"
+          divided
+          class="mb-4"
+          :disabled="!step2Unlocked"
+        >
           <v-btn value="all">Todos os 399 municípios do Paraná</v-btn>
           <v-btn value="select">Selecionar municípios</v-btn>
         </v-btn-toggle>
@@ -72,42 +90,79 @@
           </p>
         </div>
 
-        <v-alert v-else color="primary" variant="tonal" density="compact" icon="mdi-check">
+        <v-alert
+          v-else-if="scope === 'all'"
+          color="primary"
+          variant="tonal"
+          density="compact"
+          icon="mdi-check"
+        >
           Todos os 399 municípios do Paraná serão incluídos na carga.
         </v-alert>
       </v-card-text>
     </v-card>
 
     <!-- 3. Agendamento -->
-    <v-card class="mb-6">
-      <v-card-title>3. Agendamento</v-card-title>
+    <v-card class="mb-6" :disabled="!step3Unlocked">
+      <v-card-title>
+        3. Agendamento
+        <v-icon v-if="!step3Unlocked" icon="mdi-lock-outline" size="small" class="ml-1" />
+      </v-card-title>
+      <v-card-subtitle v-if="!step3Unlocked">
+        Defina a abrangência geográfica (e selecione ao menos um município, se for o caso)
+        para liberar esta etapa.
+      </v-card-subtitle>
       <v-card-text>
-        <v-btn-toggle v-model="schedule" mandatory color="primary" variant="outlined" divided class="mb-4">
+        <v-btn-toggle
+          v-model="schedule"
+          mandatory
+          color="primary"
+          variant="outlined"
+          divided
+          class="mb-4"
+          :disabled="!step3Unlocked"
+        >
           <v-btn value="now" prepend-icon="mdi-lightning-bolt">Executar agora</v-btn>
           <v-btn value="later" prepend-icon="mdi-calendar">Agendar para</v-btn>
         </v-btn-toggle>
 
         <v-row v-if="schedule === 'later'">
           <v-col cols="12" sm="8">
-            <v-text-field v-model="scheduledDate" label="Data" type="date" />
+            <v-text-field
+              v-model="scheduledDate"
+              label="Data"
+              type="date"
+              :disabled="!step3Unlocked"
+            />
           </v-col>
           <v-col cols="12" sm="4">
-            <v-text-field v-model="scheduledTime" label="Horário" type="time" />
+            <v-text-field
+              v-model="scheduledTime"
+              label="Horário"
+              type="time"
+              :disabled="!step3Unlocked"
+            />
           </v-col>
         </v-row>
 
-        <p v-else class="text-caption text-medium-emphasis">
+        <p v-else-if="schedule === 'now'" class="text-caption text-medium-emphasis">
           A carga será iniciada imediatamente no Airflow. Tempo estimado:
           <strong>~2h 40min</strong> para {{ totalMunicipalities }} municípios.
         </p>
       </v-card-text>
     </v-card>
 
-    <!-- Resumo e ação -->
+    <!-- 4. Resumo e ação -->
     <v-card class="mb-6">
-      <v-card-title>Resumo da carga</v-card-title>
+      <v-card-title>
+        4. Resumo da carga
+        <v-icon v-if="!step4Unlocked" icon="mdi-lock-outline" size="small" class="ml-1" />
+      </v-card-title>
+      <v-card-subtitle v-if="!step4Unlocked">
+        Defina o agendamento para liberar o início da carga.
+      </v-card-subtitle>
       <v-card-text>
-        <v-row class="mb-4">
+        <v-row class="mb-4" :class="{ 'opacity-50': !step4Unlocked }">
           <v-col v-for="item in summary" :key="item.label" cols="12" sm="4">
             <v-card variant="outlined" class="pa-3">
               <div class="text-caption text-medium-emphasis text-uppercase">{{ item.label }}</div>
@@ -117,7 +172,12 @@
         </v-row>
 
         <v-btn variant="outlined" class="mr-3" @click="cancel">Cancelar</v-btn>
-        <v-btn color="primary" prepend-icon="mdi-lightning-bolt" @click="startLoad">
+        <v-btn
+          color="primary"
+          prepend-icon="mdi-lightning-bolt"
+          :disabled="!step4Unlocked"
+          @click="startLoad"
+        >
           Iniciar carga
         </v-btn>
       </v-card-text>
@@ -135,6 +195,7 @@ const router = useRouter()
 
 const TOTAL_MUNICIPALITIES = 399
 
+//PUXAR DA BASE DE DADOS
 const sources = [
   { id: 'IBGE', label: 'IBGE', description: 'Censo Agropecuário' },
   { id: 'IBAMA', label: 'IBAMA', description: 'Licenças Ambientais' },
@@ -142,6 +203,7 @@ const sources = [
   { id: 'MapBiomas', label: 'MapBiomas', description: 'Cobertura Vegetal' },
 ]
 
+//PUXAR DA BASE DE DADOS
 const municipalities = [
   'Curitiba', 'Londrina', 'Maringá', 'Cascavel', 'Ponta Grossa',
   'Foz do Iguaçu', 'Guarapuava', 'Paranaguá', 'Apucarana', 'Campo Mourão',
@@ -150,14 +212,38 @@ const municipalities = [
   'Sarandi', 'Cianorte', 'Fazenda Rio Grande', 'Paranavaí', 'Telêmaco Borba',
 ]
 
-const source = ref('IBGE')
-const scope = ref<'all' | 'select'>('all')
+// Nothing is chosen at the beginning
+const source = ref('')
+const scope = ref<'all' | 'select' | null>(null)
 const search = ref('')
 const selected = ref<string[]>([])
-const schedule = ref<'now' | 'later'>('now')
+const schedule = ref<'now' | 'later' | null>(null)
 const scheduledDate = ref(new Date().toISOString().slice(0, 10))
 const scheduledTime = ref('06:00')
 const showMessage = ref(false)
+
+// Each step is unlocked only when the previous one is complete
+const step2Unlocked = computed(() => source.value !== '')
+
+const step3Unlocked = computed(
+  () =>
+    step2Unlocked.value &&
+    (scope.value === 'all' || (scope.value === 'select' && selected.value.length > 0)),
+)
+
+const step4Unlocked = computed(
+  () =>
+    step3Unlocked.value &&
+    (schedule.value === 'now' ||
+      (schedule.value === 'later' && scheduledDate.value !== '' && scheduledTime.value !== '')),
+)
+
+const steps = computed(() => [
+  { title: '1. Fonte', unlocked: true },
+  { title: '2. Municípios', unlocked: step2Unlocked.value },
+  { title: '3. Agendamento', unlocked: step3Unlocked.value },
+  { title: '4. Confirmar', unlocked: step4Unlocked.value },
+])
 
 const filteredMunicipalities = computed(() =>
   municipalities.filter((m) => m.toLowerCase().includes(search.value.toLowerCase())),
@@ -168,11 +254,19 @@ const totalMunicipalities = computed(() =>
 )
 
 const summary = computed(() => [
-  { label: 'Fonte', value: source.value },
-  { label: 'Municípios', value: `${totalMunicipalities.value} de ${TOTAL_MUNICIPALITIES}` },
+  { label: 'Fonte', value: source.value || '—' },
+  {
+    label: 'Municípios',
+    value: scope.value ? `${totalMunicipalities.value} de ${TOTAL_MUNICIPALITIES}` : '—',
+  },
   {
     label: 'Execução',
-    value: schedule.value === 'now' ? 'Imediata' : `${scheduledDate.value} · ${scheduledTime.value}`,
+    value:
+      schedule.value === 'now'
+        ? 'Imediata'
+        : schedule.value === 'later'
+          ? `${scheduledDate.value} · ${scheduledTime.value}`
+          : '—',
   },
 ])
 
@@ -181,6 +275,7 @@ function cancel() {
 }
 
 function startLoad() {
+  if (!step4Unlocked.value) return
   // For now only shows a message. When the load tracking screen exists,
   // replace this with: router.push('/load-tracking')
   showMessage.value = true
