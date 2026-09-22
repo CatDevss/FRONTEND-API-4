@@ -1,14 +1,9 @@
 <template>
   <v-dialog v-model="model" max-width="560">
-    <v-card title="Nova fonte de dados">
+    <v-card title="Novo conjunto de dados">
       <v-form ref="form" v-model="valid" @submit.prevent="askConfirmation">
         <v-card-text>
-          <v-text-field v-model="dataSource.name" label="Nome *" :rules="[required]" />
-          <v-text-field
-            v-model="dataSource.url"
-            label="Endereço de acesso (URL) *"
-            :rules="[required, validUrl]"
-          />
+          <v-text-field v-model="dataSet.name" label="Nome *" :rules="[required]" />
         </v-card-text>
       </v-form>
 
@@ -16,14 +11,14 @@
         <v-spacer />
         <v-btn @click="close">Cancelar</v-btn>
         <v-btn color="primary" variant="flat" :disabled="!valid" @click="askConfirmation">
-          Salvar fonte
+          Salvar conjunto
         </v-btn>
       </v-card-actions>
 
       <ConfirmDialog
         v-model="showConfirm"
-        title="Salvar fonte"
-        message="Deseja salvar a fonte cadastrada?"
+        title="Salvar conjunto"
+        message="Deseja salvar o conjunto cadastrado?"
         @confirm="save"
       />
     </v-card>
@@ -45,12 +40,8 @@ const form = ref<{ resetValidation: () => void } | null>(null)
 const valid = ref<boolean | null>(null)
 
 // Values typed in the form
-const dataSource = reactive({
-  name: '',
-  acronym: '',
-  agency: '',
-  url: '',
-  description: '',
+const dataSet = reactive({
+  name: ''
 })
 
 // Validation rules: return true when valid, or the error message
@@ -65,7 +56,7 @@ function askConfirmation() {
 }
 
 async function clearForm() {
-  Object.assign(dataSource, { name: '', acronym: '', agency: '', url: '', description: '' })
+  Object.assign(dataSet, { name: ''})
   await nextTick()
   form.value?.resetValidation()
 }
@@ -77,7 +68,7 @@ function close() {
 
 function save() {
   // For now it only closes the popup.
-  // Later this is where the data source will be saved in the store.
+  // Later this is where the data set will be saved in the store.
   close()
 }
 </script>

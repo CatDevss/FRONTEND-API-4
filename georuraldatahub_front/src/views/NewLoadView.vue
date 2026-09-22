@@ -17,7 +17,7 @@
 
     <!-- 1. Fonte de dados (sempre liberada) -->
     <v-card class="mb-6">
-          <v-card-title class="d-flex align-center">
+      <v-card-title class="d-flex align-center">
         1. Fonte de dados
         <v-spacer />
         <v-btn
@@ -28,7 +28,11 @@
         >
           Nova fonte
         </v-btn>
-      </v-card-title>  <v-card-text>
+      </v-card-title>
+      <v-card-subtitle v-if="!step2Unlocked">
+        Selecione uma fonte ou cadastre uma nova
+      </v-card-subtitle>
+      <v-card-text>
         <v-row>
           <v-col v-for="s in sources" :key="s.id" cols="6" md="3">
             <v-card
@@ -53,14 +57,18 @@
       </v-card-text>
     </v-card>
 
-    <!-- 2. Abrangência geográfica -->
+    <!-- 2. Conjunto (libera após escolher a fonte) -->
     <v-card class="mb-6" :disabled="!step2Unlocked">
-      <v-card-title>
-        2. Abrangência geográfica
+      <v-card-title class="d-flex align-center">
+        2. Conjunto
         <v-icon v-if="!step2Unlocked" icon="mdi-lock-outline" size="small" class="ml-1" />
+        <v-spacer />
+        <v-btn size="small" variant="outlined" prepend-icon="mdi-plus" @click="showDataSetDialog = true">
+          Novo conjunto
+        </v-btn>
       </v-card-title>
       <v-card-subtitle v-if="!step2Unlocked">
-        Escolha uma fonte de dados para liberar esta etapa.
+        Escolha um conjunto de dados para liberar esta etapa.
       </v-card-subtitle>
       <v-card-text>
         <v-btn-toggle
@@ -72,43 +80,8 @@
           class="mb-4"
           :disabled="!step2Unlocked"
         >
-          <v-btn value="all">Todos os 399 municípios do Paraná</v-btn>
-          <v-btn value="select">Selecionar municípios</v-btn>
         </v-btn-toggle>
-
-        <div v-if="scope === 'select'">
-          <v-text-field
-            v-model="search"
-            label="Buscar município..."
-            prepend-inner-icon="mdi-magnify"
-            hide-details
-            class="mb-3"
-          />
-          <div class="border rounded pa-2" style="max-height: 240px; overflow-y: auto">
-            <v-checkbox
-              v-for="m in filteredMunicipalities"
-              :key="m"
-              v-model="selected"
-              :value="m"
-              :label="m"
-              density="compact"
-              hide-details
-            />
-          </div>
-          <p v-if="selected.length > 0" class="text-caption text-primary mt-2">
-            {{ selected.length }} município(s) selecionado(s)
-          </p>
-        </div>
-
-        <v-alert
-          v-else-if="scope === 'all'"
-          color="primary"
-          variant="tonal"
-          density="compact"
-          icon="mdi-check"
-        >
-          Todos os 399 municípios do Paraná serão incluídos na carga.
-        </v-alert>
+        
       </v-card-text>
     </v-card>
 
@@ -192,7 +165,9 @@
         </v-btn>
       </v-card-text>
     </v-card>
+
     <DataSourceDialog v-model="showDataSourceDialog" />
+    <DataSetDialog v-model="showDataSetDialog" />
 
     <ConfirmDialog
       v-model="showConfirm"
@@ -200,12 +175,7 @@
       message="Deseja iniciar a carga com os parâmetros selecionados?"
       @confirm="startLoad"
     />
-    <ConfirmDialog
-  v-model="showConfirm"
-  title="Iniciar carga"
-  message="Deseja iniciar a carga com os parâmetros selecionados?"
-  @confirm="startLoad"
-/>
+
     <v-snackbar v-model="showMessage" :timeout="3000">Carga iniciada (simulação).</v-snackbar>
   </div>
 </template>
@@ -215,12 +185,14 @@ import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import DataSourceDialog from '@/components/DataSourceDialog.vue'
+import DataSetDialog from '@/components/DataSetDialog.vue'
 
 const router = useRouter()
 
 const TOTAL_MUNICIPALITIES = 399
 
 const showDataSourceDialog = ref(false)
+const showDataSetDialog = ref(false)
 
 //PUXAR DA BASE DE DADOS
 const sources = [
