@@ -63,74 +63,46 @@
         2. Conjunto
         <v-icon v-if="!step2Unlocked" icon="mdi-lock-outline" size="small" class="ml-1" />
         <v-spacer />
-        <v-btn size="small" variant="outlined" prepend-icon="mdi-plus" @click="showDataSetDialog = true">
+        <v-btn
+          size="small"
+          variant="outlined"
+          prepend-icon="mdi-plus"
+          @click="showDataSetDialog = true"
+        >
           Novo conjunto
         </v-btn>
       </v-card-title>
       <v-card-subtitle v-if="!step2Unlocked">
-        Escolha um conjunto de dados para liberar esta etapa.
+        Escolha uma fonte de dados para liberar esta etapa.
       </v-card-subtitle>
       <v-card-text>
-        <v-btn-toggle
-          v-model="scope"
-          mandatory
-          color="primary"
-          variant="outlined"
-          divided
-          class="mb-4"
-          :disabled="!step2Unlocked"
-        >
-        </v-btn-toggle>
-        
+        <!-- TODO: seleção de conjunto cadastrado ainda não implementada -->
+        <p class="text-caption text-medium-emphasis">
+          Seleção de conjunto em construção. Por enquanto, cadastre um conjunto com o botão acima.
+        </p>
       </v-card-text>
     </v-card>
 
-    <!-- 3. Agendamento -->
-    <v-card class="mb-6" :disabled="!step3Unlocked">
+    <!-- 3. Arquivo -->
+    <v-card class="mb-6" :disabled="!step2Unlocked">
       <v-card-title>
-        3. Agendamento
-        <v-icon v-if="!step3Unlocked" icon="mdi-lock-outline" size="small" class="ml-1" />
+        3. Arquivo
+        <v-icon v-if="!step2Unlocked" icon="mdi-lock-outline" size="small" class="ml-1" />
       </v-card-title>
-      <v-card-subtitle v-if="!step3Unlocked">
-        Defina a abrangência geográfica (e selecione ao menos um município, se for o caso)
-        para liberar esta etapa.
+      <v-card-subtitle v-if="!step2Unlocked">
+        Escolha uma fonte de dados para liberar esta etapa.
       </v-card-subtitle>
       <v-card-text>
-        <v-btn-toggle
-          v-model="schedule"
-          mandatory
-          color="primary"
-          variant="outlined"
-          divided
-          class="mb-4"
-          :disabled="!step3Unlocked"
-        >
-          <v-btn value="now" prepend-icon="mdi-lightning-bolt">Executar agora</v-btn>
-          <v-btn value="later" prepend-icon="mdi-calendar">Agendar para</v-btn>
-        </v-btn-toggle>
-
-        <v-row v-if="schedule === 'later'">
-          <v-col cols="12" sm="8">
-            <v-text-field
-              v-model="scheduledDate"
-              label="Data"
-              type="date"
-              :disabled="!step3Unlocked"
-            />
-          </v-col>
-          <v-col cols="12" sm="4">
-            <v-text-field
-              v-model="scheduledTime"
-              label="Horário"
-              type="time"
-              :disabled="!step3Unlocked"
-            />
-          </v-col>
-        </v-row>
-
-        <p v-else-if="schedule === 'now'" class="text-caption text-medium-emphasis">
-          A carga será iniciada imediatamente no Airflow. Tempo estimado:
-          <strong>~2h 40min</strong> para {{ totalMunicipalities }} municípios.
+        <v-file-input
+          v-model="uploadedFile"
+          label="Arquivo de dados *"
+          accept=".csv,.json,.xlsx"
+          prepend-icon="mdi-paperclip"
+          show-size
+          :disabled="!step2Unlocked"
+        />
+        <p v-if="uploadedFile" class="text-caption text-primary mt-2">
+          Arquivo selecionado: {{ uploadedFile.name }}
         </p>
       </v-card-text>
     </v-card>
@@ -142,11 +114,11 @@
         <v-icon v-if="!step4Unlocked" icon="mdi-lock-outline" size="small" class="ml-1" />
       </v-card-title>
       <v-card-subtitle v-if="!step4Unlocked">
-        Defina o agendamento para liberar o início da carga.
+        Anexe um arquivo para liberar o início da carga.
       </v-card-subtitle>
       <v-card-text>
         <v-row class="mb-4" :class="{ 'opacity-50': !step4Unlocked }">
-          <v-col v-for="item in summary" :key="item.label" cols="12" sm="4">
+          <v-col v-for="item in summary" :key="item.label" cols="12" sm="6">
             <v-card variant="outlined" class="pa-3">
               <div class="text-caption text-medium-emphasis text-uppercase">{{ item.label }}</div>
               <div class="text-subtitle-2">{{ item.value }}</div>
@@ -189,8 +161,6 @@ import DataSetDialog from '@/components/DataSetDialog.vue'
 
 const router = useRouter()
 
-const TOTAL_MUNICIPALITIES = 399
-
 const showDataSourceDialog = ref(false)
 const showDataSetDialog = ref(false)
 
@@ -202,72 +172,30 @@ const sources = [
   { id: 'MapBiomas', label: 'MapBiomas', description: 'Cobertura Vegetal' },
 ]
 
-//PUXAR DA BASE DE DADOS
-const municipalities = [
-  'Curitiba', 'Londrina', 'Maringá', 'Cascavel', 'Ponta Grossa',
-  'Foz do Iguaçu', 'Guarapuava', 'Paranaguá', 'Apucarana', 'Campo Mourão',
-  'Araucária', 'Francisco Beltrão', 'Toledo', 'Pinhais', 'Colombo',
-  'Almirante Tamandaré', 'Umuarama', 'Cambé', 'Ibiporã', 'Rolândia',
-  'Sarandi', 'Cianorte', 'Fazenda Rio Grande', 'Paranavaí', 'Telêmaco Borba',
-]
-
 // Nothing is chosen at the beginning
 const source = ref('')
-const scope = ref<'all' | 'select' | null>(null)
-const search = ref('')
-const selected = ref<string[]>([])
-const schedule = ref<'now' | 'later' | null>(null)
-const scheduledDate = ref(new Date().toISOString().slice(0, 10))
-const scheduledTime = ref('06:00')
+const uploadedFile = ref<File | null>(null)
 const showMessage = ref(false)
 const showConfirm = ref(false)
 
 // Each step is unlocked only when the previous one is complete
 const step2Unlocked = computed(() => source.value !== '')
 
-const step3Unlocked = computed(
-  () =>
-    step2Unlocked.value &&
-    (scope.value === 'all' || (scope.value === 'select' && selected.value.length > 0)),
-)
+// TODO: quando a seleção de conjunto existir, incluir essa condição aqui também
+const step3Unlocked = computed(() => step2Unlocked.value && uploadedFile.value !== null)
 
-const step4Unlocked = computed(
-  () =>
-    step3Unlocked.value &&
-    (schedule.value === 'now' ||
-      (schedule.value === 'later' && scheduledDate.value !== '' && scheduledTime.value !== '')),
-)
+const step4Unlocked = computed(() => step3Unlocked.value)
 
 const steps = computed(() => [
   { title: '1. Fonte', unlocked: true },
-  { title: '2. Municípios', unlocked: step2Unlocked.value },
-  { title: '3. Agendamento', unlocked: step3Unlocked.value },
+  { title: '2. Conjunto', unlocked: step2Unlocked.value },
+  { title: '3. Arquivo', unlocked: step3Unlocked.value },
   { title: '4. Confirmar', unlocked: step4Unlocked.value },
 ])
 
-const filteredMunicipalities = computed(() =>
-  municipalities.filter((m) => m.toLowerCase().includes(search.value.toLowerCase())),
-)
-
-const totalMunicipalities = computed(() =>
-  scope.value === 'all' ? TOTAL_MUNICIPALITIES : selected.value.length,
-)
-
 const summary = computed(() => [
   { label: 'Fonte', value: source.value || '—' },
-  {
-    label: 'Municípios',
-    value: scope.value ? `${totalMunicipalities.value} de ${TOTAL_MUNICIPALITIES}` : '—',
-  },
-  {
-    label: 'Execução',
-    value:
-      schedule.value === 'now'
-        ? 'Imediata'
-        : schedule.value === 'later'
-          ? `${scheduledDate.value} · ${scheduledTime.value}`
-          : '—',
-  },
+  { label: 'Arquivo', value: uploadedFile.value ? uploadedFile.value.name : '—' },
 ])
 
 function cancel() {
