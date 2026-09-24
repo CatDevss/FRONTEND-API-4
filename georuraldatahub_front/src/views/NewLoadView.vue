@@ -20,12 +20,7 @@
       <v-card-title class="d-flex align-center">
         1. Fonte de dados
         <v-spacer />
-        <v-btn
-          size="small"
-          variant="outlined"
-          prepend-icon="mdi-plus"
-          @click="showDataSourceDialog = true"
-        >
+        <v-btn size="small" variant="outlined" prepend-icon="mdi-plus" @click="showDataSourceDialog = true">
           Nova fonte
         </v-btn>
       </v-card-title>
@@ -35,17 +30,9 @@
       <v-card-text>
         <v-row>
           <v-col v-for="s in sources" :key="s.id" cols="6" md="3">
-            <v-card
-              variant="outlined"
-              :color="source === s.id ? 'primary' : undefined"
-              class="pa-4 text-center h-100"
-              @click="source = s.id"
-            >
-              <v-avatar
-                rounded="lg"
-                size="40"
-                :color="source === s.id ? 'primary' : 'grey-lighten-2'"
-              >
+            <v-card variant="outlined" :color="source === s.id ? 'primary' : undefined" class="pa-4 text-center h-100"
+              @click="source = s.id">
+              <v-avatar rounded="lg" size="40" :color="source === s.id ? 'primary' : 'grey-lighten-2'">
                 {{ s.id.slice(0, 2) }}
               </v-avatar>
               <div class="text-subtitle-2 mt-2">{{ s.label }}</div>
@@ -63,12 +50,7 @@
         2. Conjunto
         <v-icon v-if="!step2Unlocked" icon="mdi-lock-outline" size="small" class="ml-1" />
         <v-spacer />
-        <v-btn
-          size="small"
-          variant="outlined"
-          prepend-icon="mdi-plus"
-          @click="showDataSetDialog = true"
-        >
+        <v-btn size="small" variant="outlined" prepend-icon="mdi-plus" @click="showDataSetDialog = true">
           Novo conjunto
         </v-btn>
       </v-card-title>
@@ -93,17 +75,7 @@
         Escolha uma fonte de dados para liberar esta etapa.
       </v-card-subtitle>
       <v-card-text>
-        <v-file-input
-          v-model="uploadedFile"
-          label="Arquivo de dados *"
-          accept=".csv,.json,.xlsx"
-          prepend-icon="mdi-paperclip"
-          show-size
-          :disabled="!step2Unlocked"
-        />
-        <p v-if="uploadedFile" class="text-caption text-primary mt-2">
-          Arquivo selecionado: {{ uploadedFile.name }}
-        </p>
+        <FileUploadList v-model="uploadedFiles" :allowed-extensions="allowedExtensions" />
       </v-card-text>
     </v-card>
 
@@ -127,12 +99,7 @@
         </v-row>
 
         <v-btn variant="outlined" class="mr-3" @click="cancel">Cancelar</v-btn>
-        <v-btn
-          color="primary"
-          prepend-icon="mdi-lightning-bolt"
-          :disabled="!step4Unlocked"
-          @click="showConfirm = true"
-        >
+        <v-btn color="primary" prepend-icon="mdi-lightning-bolt" :disabled="!step4Unlocked" @click="showConfirm = true">
           Iniciar carga
         </v-btn>
       </v-card-text>
@@ -141,12 +108,8 @@
     <DataSourceDialog v-model="showDataSourceDialog" />
     <DataSetDialog v-model="showDataSetDialog" />
 
-    <ConfirmDialog
-      v-model="showConfirm"
-      title="Iniciar carga"
-      message="Deseja iniciar a carga com os parâmetros selecionados?"
-      @confirm="startLoad"
-    />
+    <ConfirmDialog v-model="showConfirm" title="Iniciar carga"
+      message="Deseja iniciar a carga com os parâmetros selecionados?" @confirm="startLoad" />
 
     <v-snackbar v-model="showMessage" :timeout="3000">Carga iniciada (simulação).</v-snackbar>
   </div>
@@ -158,9 +121,9 @@ import { useRouter } from 'vue-router'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import DataSourceDialog from '@/components/DataSourceDialog.vue'
 import DataSetDialog from '@/components/DataSetDialog.vue'
+import FileUploadList from '@/components/upload/FileUploadList.vue'
 
 const router = useRouter()
-
 const showDataSourceDialog = ref(false)
 const showDataSetDialog = ref(false)
 
@@ -174,7 +137,8 @@ const sources = [
 
 // Nothing is chosen at the beginning
 const source = ref('')
-const uploadedFile = ref<File | null>(null)
+const uploadedFiles = ref<File[]>([])
+const allowedExtensions = ['shp', 'gpkg', 'geojson', 'csv', 'tif', 'tiff']
 const showMessage = ref(false)
 const showConfirm = ref(false)
 
@@ -182,7 +146,7 @@ const showConfirm = ref(false)
 const step2Unlocked = computed(() => source.value !== '')
 
 // TODO: quando a seleção de conjunto existir, incluir essa condição aqui também
-const step3Unlocked = computed(() => step2Unlocked.value && uploadedFile.value !== null)
+const step3Unlocked = computed(() => step2Unlocked.value && uploadedFiles.value.length > 0)
 
 const step4Unlocked = computed(() => step3Unlocked.value)
 
@@ -195,7 +159,7 @@ const steps = computed(() => [
 
 const summary = computed(() => [
   { label: 'Fonte', value: source.value || '—' },
-  { label: 'Arquivo', value: uploadedFile.value ? uploadedFile.value.name : '—' },
+  { label: 'Arquivo', value: uploadedFiles.value.length > 0 ? uploadedFiles.value.map((file) => file.name).join(', ') : '—' },
 ])
 
 function cancel() {
