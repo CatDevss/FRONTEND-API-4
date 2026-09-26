@@ -48,9 +48,6 @@
             <td>{{ file.dataset }}</td>
             <td class="font-mono text-caption">{{ file.hash }}</td>
             <td>{{ formatDateTime(file.sentAt) }}</td>
-            <td class="text-right">
-              <v-icon icon="mdi-chevron-right" size="small" />
-            </td>
           </tr>
         </tbody>
       </v-table>
