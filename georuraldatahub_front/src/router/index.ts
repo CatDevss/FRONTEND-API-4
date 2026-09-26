@@ -2,6 +2,8 @@ import { createRouter, createWebHistory } from 'vue-router'
 import LoginView from '../views/LoginView.vue'
 import Home from '../views/HomeView.vue'
 import NewLoad from '../views/NewLoadView.vue' 
+import FileUploads from '../views/FileUploadsView.vue'
+
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
@@ -14,6 +16,9 @@ const router = createRouter({
     { path: '/new-load',
       name: 'new-load',
       component: NewLoad},
+    { path: '/file-uploads', 
+      name: 'file-uploads', 
+      component: FileUploads },
   ],
 })
 
