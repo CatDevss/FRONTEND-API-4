@@ -4,21 +4,32 @@
       <v-form ref="form" v-model="valid" @submit.prevent="askConfirmation">
         <v-card-text>
           <v-text-field v-model="dataSource.name" label="Nome *" :rules="[required]" />
+          <v-text-field v-model="dataSource.acronym" label="Sigla *" :rules="[required]" />
+          <v-text-field
+            v-model="dataSource.agency"
+            label="Órgão responsável *"
+            :rules="[required]"
+          />
           <v-text-field
             v-model="dataSource.url"
             label="Endereço de acesso (URL) *"
             :rules="[required, validUrl]"
           />
-        </v-card-text>
-      </v-form>
+          <v-textarea v-model="dataSource.description" label="Descrição" rows="2" />
 
-      <v-card-actions>
-        <v-spacer />
-        <v-btn @click="close">Cancelar</v-btn>
-        <v-btn color="primary" variant="flat" :disabled="!valid" @click="askConfirmation">
-          Salvar fonte
-        </v-btn>
-      </v-card-actions>
+          <v-alert v-if="errorMessage" type="error" variant="tonal" density="compact" class="mb-2">
+            {{ errorMessage }}
+          </v-alert>
+        </v-card-text>
+
+        <v-card-actions>
+          <v-spacer />
+          <v-btn type="button" :disabled="saving" @click="close">Cancelar</v-btn>
+          <v-btn type="submit" color="primary" variant="flat" :disabled="!valid" :loading="saving">
+            Salvar fonte
+          </v-btn>
+        </v-card-actions>
+      </v-form>
 
       <ConfirmDialog
         v-model="showConfirm"
@@ -32,19 +43,22 @@
 
 <script setup lang="ts">
 import { nextTick, reactive, ref } from 'vue'
+import axios from 'axios'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 
-// Controls whether the popup is open (the parent screen uses it with v-model)
+const emit = defineEmits<{ saved: [] }>()
 const model = defineModel<boolean>({ default: false })
 
-// Controls the confirmation popup
-const showConfirm = ref(false)
+// TODO: por enquanto fixo, no futuro vem de uma sessão de usuário real
+const TEMP_USER_ID = 1
 
-// The form reference and its state (true only when every rule passes)
+const showConfirm = ref(false)
+const saving = ref(false)
+const errorMessage = ref('')
+
 const form = ref<{ resetValidation: () => void } | null>(null)
 const valid = ref<boolean | null>(null)
 
-// Values typed in the form
 const dataSource = reactive({
   name: '',
   acronym: '',
@@ -53,13 +67,11 @@ const dataSource = reactive({
   description: '',
 })
 
-// Validation rules: return true when valid, or the error message
 const required = (v: string | null) => (v ?? '').trim() !== '' || 'Campo obrigatório'
 const validUrl = (v: string | null) =>
   /^https?:\/\/.+/.test(v ?? '') || 'Informe uma URL começando com http:// ou https://'
 
 function askConfirmation() {
-  // Safety net: an incomplete form never reaches the confirmation
   if (!valid.value) return
   showConfirm.value = true
 }
@@ -72,12 +84,28 @@ async function clearForm() {
 
 function close() {
   clearForm()
+  errorMessage.value = ''
   model.value = false
 }
 
-function save() {
-  // For now it only closes the popup.
-  // Later this is where the data source will be saved in the store.
-  close()
+async function save() {
+  saving.value = true
+  errorMessage.value = ''
+
+  try {
+    await axios.post('/fontes', {
+      name: dataSource.name.trim(),
+      url: dataSource.url.trim(),
+      userId: TEMP_USER_ID,
+    })
+    emit('saved')
+    close()
+  } catch (error) {
+    errorMessage.value = axios.isAxiosError(error)
+      ? (error.response?.data?.message ?? 'Erro ao salvar a fonte.')
+      : 'Erro desconhecido ao salvar a fonte.'
+  } finally {
+    saving.value = false
+  }
 }
 </script>

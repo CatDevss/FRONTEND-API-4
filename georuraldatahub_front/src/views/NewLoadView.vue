@@ -33,25 +33,34 @@
         Selecione uma fonte ou cadastre uma nova
       </v-card-subtitle>
       <v-card-text>
-        <v-row>
+        <v-progress-circular v-if="loadingSources" indeterminate color="primary" />
+        <v-row v-else>
           <v-col v-for="s in sources" :key="s.id" cols="6" md="3">
             <v-card
               variant="outlined"
               :color="source === s.id ? 'primary' : undefined"
               class="pa-4 text-center h-100"
-              @click="source = s.id"
+              role="button"
+              tabindex="0"
+              :aria-pressed="source === s.id"
+              @click="selectSource(s)"
+              @keydown.enter="selectSource(s)"
+              @keydown.space.prevent="selectSource(s)"
             >
               <v-avatar
                 rounded="lg"
                 size="40"
                 :color="source === s.id ? 'primary' : 'grey-lighten-2'"
               >
-                {{ s.id.slice(0, 2) }}
+                {{ s.name.slice(0, 2).toUpperCase() }}
               </v-avatar>
-              <div class="text-subtitle-2 mt-2">{{ s.label }}</div>
-              <div class="text-caption text-medium-emphasis">{{ s.description }}</div>
+              <div class="text-subtitle-2 mt-2">{{ s.name }}</div>
               <v-icon v-if="source === s.id" icon="mdi-check-circle" color="primary" class="mt-1" />
             </v-card>
+          </v-col>
+
+          <v-col v-if="sources.length === 0" cols="12">
+            <p class="text-medium-emphasis">Nenhuma fonte cadastrada ainda.</p>
           </v-col>
         </v-row>
       </v-card-text>
@@ -76,7 +85,12 @@
         Escolha uma fonte de dados para liberar esta etapa.
       </v-card-subtitle>
       <v-card-text>
-        <DatasetSelect v-model="dataset" />
+        <DatasetSelect
+          :key="datasetSelectKey"
+          v-model="dataset"
+          :source-id="source"
+          @update:name="datasetName = $event"
+        />
       </v-card-text>
     </v-card>
 
@@ -113,11 +127,14 @@
           </v-col>
         </v-row>
 
-        <v-btn variant="outlined" class="mr-3" @click="cancel">Cancelar</v-btn>
+        <v-btn variant="outlined" class="mr-3" :disabled="isUploading" @click="cancel">
+          Cancelar
+        </v-btn>
         <v-btn
           color="primary"
           prepend-icon="mdi-lightning-bolt"
           :disabled="!step4Unlocked"
+          :loading="isUploading"
           @click="showConfirm = true"
         >
           Iniciar carga
@@ -125,8 +142,8 @@
       </v-card-text>
     </v-card>
 
-    <DataSourceDialog v-model="showDataSourceDialog" />
-    <DataSetDialog v-model="showDataSetDialog" />
+    <DataSourceDialog v-model="showDataSourceDialog" @saved="fetchSources" />
+    <DataSetDialog v-model="showDataSetDialog" :source-id="source" @saved="fetchDatasetsAgain" />
 
     <ConfirmDialog
       v-model="showConfirm"
@@ -135,53 +152,100 @@
       @confirm="startLoad"
     />
 
-    <v-snackbar v-model="showMessage" :timeout="3000">Carga iniciada (simulação).</v-snackbar>
+    <!-- Popup de erros no envio -->
+    <v-dialog v-model="showErrorDialog" max-width="500">
+      <v-card>
+        <v-card-title class="d-flex align-center">
+          <v-icon icon="mdi-alert-circle" color="error" class="mr-2" />
+          Alguns arquivos não foram enviados
+        </v-card-title>
+        <v-card-text>
+          <div v-for="r in failedUploads" :key="r.name" class="mb-3">
+            <div class="font-weight-medium">{{ r.name }}</div>
+            <div class="text-caption text-medium-emphasis">{{ r.message }}</div>
+          </div>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn color="primary" variant="flat" @click="showErrorDialog = false">Entendi</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-snackbar v-model="showMessage" :timeout="4000">{{ uploadSummary }}</v-snackbar>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import axios from 'axios'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import DataSourceDialog from '@/components/DataSourceDialog.vue'
 import DataSetDialog from '@/components/DataSetDialog.vue'
 import FileUploadList from '@/components/upload/FileUploadList.vue'
 import DatasetSelect from '@/components/DatasetSelect.vue'
 
+interface SourceOption {
+  id: number
+  name: string
+}
+
 const router = useRouter()
 const showDataSourceDialog = ref(false)
 const showDataSetDialog = ref(false)
 
-//PUXAR DA BASE DE DADOS
-const sources = [
-  { id: 'IBGE', label: 'IBGE', description: 'Censo Agropecuário' },
-  { id: 'IBAMA', label: 'IBAMA', description: 'Licenças Ambientais' },
-  { id: 'INCRA', label: 'INCRA', description: 'Georreferenciamento' },
-  { id: 'MapBiomas', label: 'MapBiomas', description: 'Cobertura Vegetal' },
-]
+const sources = ref<SourceOption[]>([])
+const loadingSources = ref(false)
 
-// TODO: remover essa lista quando a seleção de conjunto vier de uma store compartilhada
-const datasetNames: Record<string, string> = {
-  'censo-agropecuario': 'Censo Agropecuário',
-  'licencas-ambientais': 'Licenças Ambientais',
-  georreferenciamento: 'Georreferenciamento',
+const datasetSelectKey = ref(0)
+
+function fetchDatasetsAgain() {
+  datasetSelectKey.value++
 }
 
-// Nothing is chosen at the beginning
-const source = ref('')
-const dataset = ref('')
+async function fetchSources() {
+  loadingSources.value = true
+  try {
+    const { data } = await axios.get<SourceOption[]>('/fontes')
+    sources.value = data
+  } catch (error) {
+    console.error('Erro ao carregar fontes', error)
+  } finally {
+    loadingSources.value = false
+  }
+}
+
+onMounted(fetchSources)
+
+// TODO: por enquanto fixo, no futuro colocar uma sessão de usuário real
+const TEMP_USER_ID = 1
+
+const source = ref<number | null>(null)
+const dataset = ref<number | null>(null)
+const datasetName = ref('')
 const uploadedFiles = ref<File[]>([])
 const allowedExtensions = ['shp', 'gpkg', 'geojson', 'csv', 'tif', 'tiff']
 const showMessage = ref(false)
 const showConfirm = ref(false)
+const showErrorDialog = ref(false)
+const isUploading = ref(false)
+const uploadResults = ref<{ name: string; success: boolean; message: string }[]>([])
 
-const datasetName = computed(() => datasetNames[dataset.value] ?? '')
+const failedUploads = computed(() => uploadResults.value.filter((r) => !r.success))
 
-// Each step is unlocked only when the previous one is complete
-const step2Unlocked = computed(() => source.value !== '')
+function selectSource(s: SourceOption) {
+  source.value = s.id
+  dataset.value = null
+  datasetName.value = ''
+}
+
+const sourceName = computed(() => sources.value.find((s) => s.id === source.value)?.name ?? '')
+
+const step2Unlocked = computed(() => source.value !== null)
 
 const step3Unlocked = computed(
-  () => step2Unlocked.value && dataset.value !== '' && uploadedFiles.value.length > 0,
+  () => step2Unlocked.value && dataset.value !== null && uploadedFiles.value.length > 0,
 )
 
 const step4Unlocked = computed(() => step3Unlocked.value)
@@ -194,7 +258,7 @@ const steps = computed(() => [
 ])
 
 const summary = computed(() => [
-  { label: 'Fonte', value: source.value || '—' },
+  { label: 'Fonte', value: sourceName.value || '—' },
   { label: 'Conjunto', value: datasetName.value || '—' },
   {
     label: 'Arquivo',
@@ -205,14 +269,64 @@ const summary = computed(() => [
   },
 ])
 
+const uploadSummary = computed(() => {
+  const total = uploadResults.value.length
+  const success = uploadResults.value.filter((r) => r.success).length
+  if (total === 0) return ''
+  return `${success} de ${total} arquivo(s) enviado(s) com sucesso.`
+})
+
+// Traduz o erro do back-end para uma mensagem amigável, com casos especiais por status
+function describeError(status: number | undefined, backendMessage: string | undefined): string {
+  if (status === 409) {
+    return 'Este arquivo já foi enviado anteriormente para este conjunto.'
+  }
+  if (status === 404) {
+    return 'Conjunto não encontrado. Tente selecionar o conjunto novamente.'
+  }
+  if (backendMessage) {
+    return backendMessage
+  }
+  return 'Não foi possível enviar o arquivo. Tente novamente.'
+}
+
 function cancel() {
   router.push('/home')
 }
 
-function startLoad() {
-  if (!step4Unlocked.value) return
-  // For now only shows a message. When the load tracking screen exists,
-  // replace this with: router.push('/load-tracking')
-  showMessage.value = true
+async function startLoad() {
+  if (!step4Unlocked.value || dataset.value === null) return
+
+  isUploading.value = true
+  uploadResults.value = []
+
+  for (const file of uploadedFiles.value) {
+    const formData = new FormData()
+    formData.append('file', file)
+
+    try {
+      await axios.post(`/conjuntos/${dataset.value}/arquivos`, formData, {
+        params: { userId: TEMP_USER_ID },
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      uploadResults.value.push({ name: file.name, success: true, message: 'Enviado com sucesso' })
+    } catch (error) {
+      const status = axios.isAxiosError(error) ? error.response?.status : undefined
+      const backendMessage = axios.isAxiosError(error) ? error.response?.data?.message : undefined
+      uploadResults.value.push({
+        name: file.name,
+        success: false,
+        message: describeError(status, backendMessage),
+      })
+    }
+  }
+
+  isUploading.value = false
+
+  if (failedUploads.value.length > 0) {
+    showErrorDialog.value = true
+  } else {
+    showMessage.value = true
+  }
 }
 </script>
