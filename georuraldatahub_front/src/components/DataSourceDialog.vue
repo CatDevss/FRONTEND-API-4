@@ -4,18 +4,11 @@
       <v-form ref="form" v-model="valid" @submit.prevent="askConfirmation">
         <v-card-text>
           <v-text-field v-model="dataSource.name" label="Nome *" :rules="[required]" />
-          <v-text-field v-model="dataSource.acronym" label="Sigla *" :rules="[required]" />
-          <v-text-field
-            v-model="dataSource.agency"
-            label="Órgão responsável *"
-            :rules="[required]"
-          />
           <v-text-field
             v-model="dataSource.url"
             label="Endereço de acesso (URL) *"
             :rules="[required, validUrl]"
           />
-          <v-textarea v-model="dataSource.description" label="Descrição" rows="2" />
 
           <v-alert v-if="errorMessage" type="error" variant="tonal" density="compact" class="mb-2">
             {{ errorMessage }}
@@ -61,10 +54,7 @@ const valid = ref<boolean | null>(null)
 
 const dataSource = reactive({
   name: '',
-  acronym: '',
-  agency: '',
   url: '',
-  description: '',
 })
 
 const required = (v: string | null) => (v ?? '').trim() !== '' || 'Campo obrigatório'
@@ -77,7 +67,7 @@ function askConfirmation() {
 }
 
 async function clearForm() {
-  Object.assign(dataSource, { name: '', acronym: '', agency: '', url: '', description: '' })
+  Object.assign(dataSource, { name: '', url: '' })
   await nextTick()
   form.value?.resetValidation()
 }
