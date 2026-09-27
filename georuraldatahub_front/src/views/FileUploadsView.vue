@@ -89,7 +89,7 @@ interface FileResponse {
   hash: string | null
   location: string | null
   versionId: number
-  versionDateCreation: string // ISO date-time
+  dateCreation: string // ISO date-time
   versionUserId: number | null
 }
 
@@ -130,7 +130,7 @@ async function fetchAll() {
           formatFile: f.formatFile,
           size: f.size,
           hash: f.hash,
-          sentAt: f.versionDateCreation,
+          sentAt: f.dateCreation,
           datasetId: ds.id,
           datasetName: ds.name,
         }))
