@@ -33,7 +33,8 @@
         Selecione uma fonte ou cadastre uma nova
       </v-card-subtitle>
       <v-card-text>
-        <v-row>
+        <v-progress-circular v-if="loadingSources" indeterminate color="primary" />
+        <v-row v-else>
           <v-col v-for="s in sources" :key="s.id" cols="6" md="3">
             <v-card
               variant="outlined"
@@ -42,21 +43,24 @@
               role="button"
               tabindex="0"
               :aria-pressed="source === s.id"
-              @click="source = s.id"
-              @keydown.enter="source = s.id"
-              @keydown.space.prevent="source = s.id"
+              @click="selectSource(s)"
+              @keydown.enter="selectSource(s)"
+              @keydown.space.prevent="selectSource(s)"
             >
               <v-avatar
                 rounded="lg"
                 size="40"
                 :color="source === s.id ? 'primary' : 'grey-lighten-2'"
               >
-                {{ s.id.slice(0, 2) }}
+                {{ s.name.slice(0, 2).toUpperCase() }}
               </v-avatar>
-              <div class="text-subtitle-2 mt-2">{{ s.label }}</div>
-              <div class="text-caption text-medium-emphasis">{{ s.description }}</div>
+              <div class="text-subtitle-2 mt-2">{{ s.name }}</div>
               <v-icon v-if="source === s.id" icon="mdi-check-circle" color="primary" class="mt-1" />
             </v-card>
+          </v-col>
+
+          <v-col v-if="sources.length === 0" cols="12">
+            <p class="text-medium-emphasis">Nenhuma fonte cadastrada ainda.</p>
           </v-col>
         </v-row>
       </v-card-text>
@@ -81,7 +85,7 @@
         Escolha uma fonte de dados para liberar esta etapa.
       </v-card-subtitle>
       <v-card-text>
-        <DatasetSelect v-model="dataset" />
+        <DatasetSelect v-model="dataset" :source-id="source" @update:name="datasetName = $event" />
       </v-card-text>
     </v-card>
 
@@ -144,7 +148,7 @@
       </v-card-text>
     </v-card>
 
-    <DataSourceDialog v-model="showDataSourceDialog" />
+    <DataSourceDialog v-model="showDataSourceDialog" @saved="fetchSources" />
     <DataSetDialog v-model="showDataSetDialog" />
 
     <ConfirmDialog
@@ -159,7 +163,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
@@ -168,31 +172,39 @@ import DataSetDialog from '@/components/DataSetDialog.vue'
 import FileUploadList from '@/components/upload/FileUploadList.vue'
 import DatasetSelect from '@/components/DatasetSelect.vue'
 
+interface SourceOption {
+  id: number
+  name: string
+}
+
 const router = useRouter()
 const showDataSourceDialog = ref(false)
 const showDataSetDialog = ref(false)
 
-//PUXAR DA BASE DE DADOS
-const sources = [
-  { id: 'IBGE', label: 'IBGE', description: 'Censo Agropecuário' },
-  { id: 'IBAMA', label: 'IBAMA', description: 'Licenças Ambientais' },
-  { id: 'INCRA', label: 'INCRA', description: 'Georreferenciamento' },
-  { id: 'MapBiomas', label: 'MapBiomas', description: 'Cobertura Vegetal' },
-]
+const sources = ref<SourceOption[]>([])
+const loadingSources = ref(false)
 
-// TODO: remover essa lista quando a seleção de conjunto vier de uma store compartilhada
-const datasetNames: Record<string, string> = {
-  'censo-agropecuario': 'Censo Agropecuário',
-  'licencas-ambientais': 'Licenças Ambientais',
-  georreferenciamento: 'Georreferenciamento',
+async function fetchSources() {
+  loadingSources.value = true
+  try {
+    const { data } = await axios.get<SourceOption[]>('/fontes')
+    sources.value = data
+  } catch (error) {
+    console.error('Erro ao carregar fontes', error)
+  } finally {
+    loadingSources.value = false
+  }
 }
+
+onMounted(fetchSources)
 
 // TODO: por enquanto fixo — no futuro vem de uma sessão de usuário real
 const TEMP_USER_ID = 1
 
 // Nothing is chosen at the beginning
-const source = ref('')
-const dataset = ref('')
+const source = ref<number | null>(null)
+const dataset = ref<number | null>(null)
+const datasetName = ref('')
 const uploadedFiles = ref<File[]>([])
 const allowedExtensions = ['shp', 'gpkg', 'geojson', 'csv', 'tif', 'tiff']
 const showMessage = ref(false)
@@ -200,13 +212,19 @@ const showConfirm = ref(false)
 const isUploading = ref(false)
 const uploadResults = ref<{ name: string; success: boolean; message: string }[]>([])
 
-const datasetName = computed(() => datasetNames[dataset.value] ?? '')
+function selectSource(s: SourceOption) {
+  source.value = s.id
+  dataset.value = null // trocar de fonte limpa o conjunto escolhido
+  datasetName.value = ''
+}
+
+const sourceName = computed(() => sources.value.find((s) => s.id === source.value)?.name ?? '')
 
 // Each step is unlocked only when the previous one is complete
-const step2Unlocked = computed(() => source.value !== '')
+const step2Unlocked = computed(() => source.value !== null)
 
 const step3Unlocked = computed(
-  () => step2Unlocked.value && dataset.value !== '' && uploadedFiles.value.length > 0,
+  () => step2Unlocked.value && dataset.value !== null && uploadedFiles.value.length > 0,
 )
 
 const step4Unlocked = computed(() => step3Unlocked.value)
@@ -219,7 +237,7 @@ const steps = computed(() => [
 ])
 
 const summary = computed(() => [
-  { label: 'Fonte', value: source.value || '—' },
+  { label: 'Fonte', value: sourceName.value || '—' },
   { label: 'Conjunto', value: datasetName.value || '—' },
   {
     label: 'Arquivo',
@@ -242,20 +260,18 @@ function cancel() {
 }
 
 async function startLoad() {
-  if (!step4Unlocked.value) return
+  if (!step4Unlocked.value || dataset.value === null) return
 
   isUploading.value = true
   uploadResults.value = []
 
   for (const file of uploadedFiles.value) {
     const formData = new FormData()
-    formData.append('arquivo', file)
+    formData.append('file', file)
 
     try {
-      // TODO: confirmar com o back-end o nome do campo do arquivo ('arquivo')
-      // e se o parâmetro de usuário é query string ou outro formato
       await axios.post(`/conjuntos/${dataset.value}/arquivos`, formData, {
-        params: { usuarioId: TEMP_USER_ID },
+        params: { userId: TEMP_USER_ID },
         headers: { 'Content-Type': 'multipart/form-data' },
       })
       uploadResults.value.push({ name: file.name, success: true, message: 'Enviado com sucesso' })
