@@ -127,14 +127,10 @@
           </v-col>
         </v-row>
 
-        <v-btn variant="outlined" class="mr-3" :disabled="isUploading" @click="cancel">
-          Cancelar
-        </v-btn>
         <v-btn
           color="primary"
           prepend-icon="mdi-lightning-bolt"
-          :disabled="!step4Unlocked"
-          :loading="isUploading"
+          :disabled="!step4Unlocked || isUploadInProgress"
           @click="showConfirm = true"
         >
           Iniciar carga
@@ -149,30 +145,8 @@
       v-model="showConfirm"
       title="Iniciar carga"
       message="Deseja iniciar a carga com os parâmetros selecionados?"
-      @confirm="startLoad"
+      @confirm="confirmStart"
     />
-
-    <!-- Popup de erros no envio -->
-    <v-dialog v-model="showErrorDialog" max-width="500">
-      <v-card>
-        <v-card-title class="d-flex align-center">
-          <v-icon icon="mdi-alert-circle" color="error" class="mr-2" />
-          Alguns arquivos não foram enviados
-        </v-card-title>
-        <v-card-text>
-          <div v-for="r in failedUploads" :key="r.name" class="mb-3">
-            <div class="font-weight-medium">{{ r.name }}</div>
-            <div class="text-caption text-medium-emphasis">{{ r.message }}</div>
-          </div>
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer />
-          <v-btn color="primary" variant="flat" @click="showErrorDialog = false">Entendi</v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
-
-    <v-snackbar v-model="showMessage" :timeout="4000">{{ uploadSummary }}</v-snackbar>
   </div>
 </template>
 
@@ -185,6 +159,7 @@ import DataSourceDialog from '@/components/DataSourceDialog.vue'
 import DataSetDialog from '@/components/DataSetDialog.vue'
 import FileUploadList from '@/components/upload/FileUploadList.vue'
 import DatasetSelect from '@/components/DatasetSelect.vue'
+import { isUploadInProgress, startUpload } from '@/composables/uploadLock'
 
 interface SourceOption {
   id: number
@@ -218,30 +193,26 @@ async function fetchSources() {
 
 onMounted(fetchSources)
 
-// TODO: por enquanto fixo, no futuro colocar uma sessão de usuário real
+// TODO: por enquanto fixo, no futuro vem de uma sessão de usuário real
 const TEMP_USER_ID = 1
 
+// Nothing is chosen at the beginning
 const source = ref<number | null>(null)
 const dataset = ref<number | null>(null)
 const datasetName = ref('')
 const uploadedFiles = ref<File[]>([])
 const allowedExtensions = ['shp', 'gpkg', 'geojson', 'csv', 'tif', 'tiff']
-const showMessage = ref(false)
 const showConfirm = ref(false)
-const showErrorDialog = ref(false)
-const isUploading = ref(false)
-const uploadResults = ref<{ name: string; success: boolean; message: string }[]>([])
-
-const failedUploads = computed(() => uploadResults.value.filter((r) => !r.success))
 
 function selectSource(s: SourceOption) {
   source.value = s.id
-  dataset.value = null
+  dataset.value = null // trocar de fonte limpa o conjunto escolhido
   datasetName.value = ''
 }
 
 const sourceName = computed(() => sources.value.find((s) => s.id === source.value)?.name ?? '')
 
+// Each step is unlocked only when the previous one is complete
 const step2Unlocked = computed(() => source.value !== null)
 
 const step3Unlocked = computed(
@@ -269,64 +240,13 @@ const summary = computed(() => [
   },
 ])
 
-const uploadSummary = computed(() => {
-  const total = uploadResults.value.length
-  const success = uploadResults.value.filter((r) => r.success).length
-  if (total === 0) return ''
-  return `${success} de ${total} arquivo(s) enviado(s) com sucesso.`
-})
-
-// Traduz o erro do back-end para uma mensagem amigável, com casos especiais por status
-function describeError(status: number | undefined, backendMessage: string | undefined): string {
-  if (status === 409) {
-    return 'Este arquivo já foi enviado anteriormente para este conjunto.'
-  }
-  if (status === 404) {
-    return 'Conjunto não encontrado. Tente selecionar o conjunto novamente.'
-  }
-  if (backendMessage) {
-    return backendMessage
-  }
-  return 'Não foi possível enviar o arquivo. Tente novamente.'
-}
-
 function cancel() {
   router.push('/home')
 }
 
-async function startLoad() {
+function confirmStart() {
   if (!step4Unlocked.value || dataset.value === null) return
-
-  isUploading.value = true
-  uploadResults.value = []
-
-  for (const file of uploadedFiles.value) {
-    const formData = new FormData()
-    formData.append('file', file)
-
-    try {
-      await axios.post(`/conjuntos/${dataset.value}/arquivos`, formData, {
-        params: { userId: TEMP_USER_ID },
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
-      uploadResults.value.push({ name: file.name, success: true, message: 'Enviado com sucesso' })
-    } catch (error) {
-      const status = axios.isAxiosError(error) ? error.response?.status : undefined
-      const backendMessage = axios.isAxiosError(error) ? error.response?.data?.message : undefined
-      uploadResults.value.push({
-        name: file.name,
-        success: false,
-        message: describeError(status, backendMessage),
-      })
-    }
-  }
-
-  isUploading.value = false
-
-  if (failedUploads.value.length > 0) {
-    showErrorDialog.value = true
-  } else {
-    showMessage.value = true
-  }
+  // Dispara o envio no gerenciador global — continua rodando mesmo se o usuário sair desta tela
+  startUpload(dataset.value, uploadedFiles.value, TEMP_USER_ID)
 }
 </script>
