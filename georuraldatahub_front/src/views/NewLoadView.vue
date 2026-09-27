@@ -35,11 +35,17 @@
       <v-card-text>
         <v-row>
           <v-col v-for="s in sources" :key="s.id" cols="6" md="3">
+            <!-- ALTERADO: role, tabindex, aria-pressed e @keydown para acessibilidade por teclado -->
             <v-card
               variant="outlined"
               :color="source === s.id ? 'primary' : undefined"
               class="pa-4 text-center h-100"
+              role="button"
+              tabindex="0"
+              :aria-pressed="source === s.id"
               @click="source = s.id"
+              @keydown.enter="source = s.id"
+              @keydown.space.prevent="source = s.id"
             >
               <v-avatar
                 rounded="lg"

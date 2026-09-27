@@ -5,7 +5,12 @@
         variant="outlined"
         :color="modelValue === d.id ? 'primary' : undefined"
         class="pa-4 h-100"
+        role="button"
+        tabindex="0"
+        :aria-pressed="modelValue === d.id"
         @click="select(d.id)"
+        @keydown.enter="select(d.id)"
+        @keydown.space.prevent="select(d.id)"
       >
         <div class="d-flex align-center justify-space-between">
           <div>
