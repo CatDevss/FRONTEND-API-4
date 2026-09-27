@@ -3,10 +3,12 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import vuetify from './plugins/vuetify'
-
+import axios from 'axios'
 import App from './App.vue'
 import router from './router'
 
+axios.defaults.baseURL = import.meta.env.VITE_API_BASE_URL
+console.log('API base URL:', axios.defaults.baseURL)
 const app = createApp(App)
 
 app.use(createPinia())

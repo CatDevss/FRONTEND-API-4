@@ -35,7 +35,6 @@
       <v-card-text>
         <v-row>
           <v-col v-for="s in sources" :key="s.id" cols="6" md="3">
-            <!-- ALTERADO: role, tabindex, aria-pressed e @keydown para acessibilidade por teclado -->
             <v-card
               variant="outlined"
               :color="source === s.id ? 'primary' : undefined"
@@ -119,15 +118,29 @@
           </v-col>
         </v-row>
 
-        <v-btn variant="outlined" class="mr-3" @click="cancel">Cancelar</v-btn>
+        <v-btn variant="outlined" class="mr-3" :disabled="isUploading" @click="cancel">
+          Cancelar
+        </v-btn>
         <v-btn
           color="primary"
           prepend-icon="mdi-lightning-bolt"
           :disabled="!step4Unlocked"
+          :loading="isUploading"
           @click="showConfirm = true"
         >
           Iniciar carga
         </v-btn>
+
+        <v-alert
+          v-if="uploadResults.some((r) => !r.success)"
+          type="error"
+          variant="tonal"
+          class="mt-4"
+        >
+          <div v-for="r in uploadResults.filter((r) => !r.success)" :key="r.name">
+            {{ r.name }}: {{ r.message }}
+          </div>
+        </v-alert>
       </v-card-text>
     </v-card>
 
@@ -141,13 +154,14 @@
       @confirm="startLoad"
     />
 
-    <v-snackbar v-model="showMessage" :timeout="3000">Carga iniciada (simulação).</v-snackbar>
+    <v-snackbar v-model="showMessage" :timeout="4000">{{ uploadSummary }}</v-snackbar>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import axios from 'axios'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import DataSourceDialog from '@/components/DataSourceDialog.vue'
 import DataSetDialog from '@/components/DataSetDialog.vue'
@@ -173,6 +187,9 @@ const datasetNames: Record<string, string> = {
   georreferenciamento: 'Georreferenciamento',
 }
 
+// TODO: por enquanto fixo — no futuro vem de uma sessão de usuário real
+const TEMP_USER_ID = 1
+
 // Nothing is chosen at the beginning
 const source = ref('')
 const dataset = ref('')
@@ -180,6 +197,8 @@ const uploadedFiles = ref<File[]>([])
 const allowedExtensions = ['shp', 'gpkg', 'geojson', 'csv', 'tif', 'tiff']
 const showMessage = ref(false)
 const showConfirm = ref(false)
+const isUploading = ref(false)
+const uploadResults = ref<{ name: string; success: boolean; message: string }[]>([])
 
 const datasetName = computed(() => datasetNames[dataset.value] ?? '')
 
@@ -211,14 +230,44 @@ const summary = computed(() => [
   },
 ])
 
+const uploadSummary = computed(() => {
+  const total = uploadResults.value.length
+  const success = uploadResults.value.filter((r) => r.success).length
+  if (total === 0) return ''
+  return `${success} de ${total} arquivo(s) enviado(s) com sucesso.`
+})
+
 function cancel() {
   router.push('/home')
 }
 
-function startLoad() {
+async function startLoad() {
   if (!step4Unlocked.value) return
-  // For now only shows a message. When the load tracking screen exists,
-  // replace this with: router.push('/load-tracking')
+
+  isUploading.value = true
+  uploadResults.value = []
+
+  for (const file of uploadedFiles.value) {
+    const formData = new FormData()
+    formData.append('arquivo', file)
+
+    try {
+      // TODO: confirmar com o back-end o nome do campo do arquivo ('arquivo')
+      // e se o parâmetro de usuário é query string ou outro formato
+      await axios.post(`/conjuntos/${dataset.value}/arquivos`, formData, {
+        params: { usuarioId: TEMP_USER_ID },
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      uploadResults.value.push({ name: file.name, success: true, message: 'Enviado com sucesso' })
+    } catch (error) {
+      const message = axios.isAxiosError(error)
+        ? (error.response?.data?.message ?? error.message)
+        : 'Erro desconhecido'
+      uploadResults.value.push({ name: file.name, success: false, message })
+    }
+  }
+
+  isUploading.value = false
   showMessage.value = true
 }
 </script>
