@@ -1,7 +1,7 @@
 <template>
   <v-app>
-    <v-navigation-drawer v-if="$route.name !== 'login'" permanent color="#2D2D2D" theme="dark">
-      <v-list-item title="GeoRural DataHub" class="py-4" />
+    <v-navigation-drawer v-if="$route.name !== 'login'" permanent theme="dark">
+      <v-list-item title="GeoRural DataHub" class="py-4 brand-title" />
       <v-divider />
 
       <v-list nav>
@@ -74,7 +74,10 @@ const menuItems = [
   left: 0;
   right: 0;
   z-index: 3000;
-  background: #2d2d2d;
+  background: rgba(15, 11, 10, 0.8);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  backdrop-filter: blur(20px) saturate(140%);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
   color: white;
   padding: 8px 16px 0;
 }
