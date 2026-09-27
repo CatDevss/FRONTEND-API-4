@@ -20,12 +20,7 @@
       <v-card-title class="d-flex align-center">
         1. Fonte de dados
         <v-spacer />
-        <v-btn
-          size="small"
-          variant="outlined"
-          prepend-icon="mdi-plus"
-          @click="showDataSourceDialog = true"
-        >
+        <v-btn size="small" variant="outlined" prepend-icon="mdi-plus" @click="showDataSourceDialog = true">
           Nova fonte
         </v-btn>
       </v-card-title>
@@ -36,22 +31,10 @@
         <v-progress-circular v-if="loadingSources" indeterminate color="primary" />
         <v-row v-else>
           <v-col v-for="s in sources" :key="s.id" cols="6" md="3">
-            <v-card
-              variant="outlined"
-              :color="source === s.id ? 'primary' : undefined"
-              class="pa-4 text-center h-100"
-              role="button"
-              tabindex="0"
-              :aria-pressed="source === s.id"
-              @click="selectSource(s)"
-              @keydown.enter="selectSource(s)"
-              @keydown.space.prevent="selectSource(s)"
-            >
-              <v-avatar
-                rounded="lg"
-                size="40"
-                :color="source === s.id ? 'primary' : 'grey-lighten-2'"
-              >
+            <v-card variant="outlined" :color="source === s.id ? 'primary' : undefined" class="pa-4 text-center h-100"
+              role="button" tabindex="0" :aria-pressed="source === s.id" @click="selectSource(s)"
+              @keydown.enter="selectSource(s)" @keydown.space.prevent="selectSource(s)">
+              <v-avatar rounded="lg" size="40" :color="source === s.id ? 'primary' : 'grey-lighten-2'">
                 {{ s.name.slice(0, 2).toUpperCase() }}
               </v-avatar>
               <div class="text-subtitle-2 mt-2">{{ s.name }}</div>
@@ -72,12 +55,7 @@
         2. Conjunto
         <v-icon v-if="!step2Unlocked" icon="mdi-lock-outline" size="small" class="ml-1" />
         <v-spacer />
-        <v-btn
-          size="small"
-          variant="outlined"
-          prepend-icon="mdi-plus"
-          @click="showDataSetDialog = true"
-        >
+        <v-btn size="small" variant="outlined" prepend-icon="mdi-plus" @click="showDataSetDialog = true">
           Novo conjunto
         </v-btn>
       </v-card-title>
@@ -85,7 +63,8 @@
         Escolha uma fonte de dados para liberar esta etapa.
       </v-card-subtitle>
       <v-card-text>
-        <DatasetSelect v-model="dataset" :source-id="source" @update:name="datasetName = $event" />
+        <DatasetSelect :key="datasetSelectKey" v-model="dataset" :source-id="source"
+          @update:name="datasetName = $event" />
       </v-card-text>
     </v-card>
 
@@ -125,22 +104,12 @@
         <v-btn variant="outlined" class="mr-3" :disabled="isUploading" @click="cancel">
           Cancelar
         </v-btn>
-        <v-btn
-          color="primary"
-          prepend-icon="mdi-lightning-bolt"
-          :disabled="!step4Unlocked"
-          :loading="isUploading"
-          @click="showConfirm = true"
-        >
+        <v-btn color="primary" prepend-icon="mdi-lightning-bolt" :disabled="!step4Unlocked" :loading="isUploading"
+          @click="showConfirm = true">
           Iniciar carga
         </v-btn>
 
-        <v-alert
-          v-if="uploadResults.some((r) => !r.success)"
-          type="error"
-          variant="tonal"
-          class="mt-4"
-        >
+        <v-alert v-if="uploadResults.some((r) => !r.success)" type="error" variant="tonal" class="mt-4">
           <div v-for="r in uploadResults.filter((r) => !r.success)" :key="r.name">
             {{ r.name }}: {{ r.message }}
           </div>
@@ -149,14 +118,10 @@
     </v-card>
 
     <DataSourceDialog v-model="showDataSourceDialog" @saved="fetchSources" />
-    <DataSetDialog v-model="showDataSetDialog" />
+    <DataSetDialog v-model="showDataSetDialog" :source-id="source" @saved="fetchDatasetsAgain" />
 
-    <ConfirmDialog
-      v-model="showConfirm"
-      title="Iniciar carga"
-      message="Deseja iniciar a carga com os parâmetros selecionados?"
-      @confirm="startLoad"
-    />
+    <ConfirmDialog v-model="showConfirm" title="Iniciar carga"
+      message="Deseja iniciar a carga com os parâmetros selecionados?" @confirm="startLoad" />
 
     <v-snackbar v-model="showMessage" :timeout="4000">{{ uploadSummary }}</v-snackbar>
   </div>
@@ -183,6 +148,12 @@ const showDataSetDialog = ref(false)
 
 const sources = ref<SourceOption[]>([])
 const loadingSources = ref(false)
+
+const datasetSelectKey = ref(0)
+
+function fetchDatasetsAgain() {
+  datasetSelectKey.value++
+}
 
 async function fetchSources() {
   loadingSources.value = true
