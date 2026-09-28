@@ -63,6 +63,11 @@
             <p class="text-medium-emphasis">Nenhuma fonte cadastrada ainda.</p>
           </v-col>
         </v-row>
+        <template v-if="source !== null">
+          <v-divider class="my-4" />
+          <div class="text-subtitle-1 font-weight-medium">{{ sourceName }}</div>
+          <div class="text-body-2 source-url">{{ sourceUrl || '—' }}</div>
+        </template>
       </v-card-text>
     </v-card>
 
@@ -164,6 +169,7 @@ import { isUploadInProgress, startUpload } from '@/composables/uploadLock'
 interface SourceOption {
   id: number
   name: string
+  url: string
 }
 
 const router = useRouter()
@@ -211,6 +217,7 @@ function selectSource(s: SourceOption) {
 }
 
 const sourceName = computed(() => sources.value.find((s) => s.id === source.value)?.name ?? '')
+const sourceUrl = computed(() => sources.value.find((s) => s.id === source.value)?.url ?? '')
 
 // Each step is unlocked only when the previous one is complete
 const step2Unlocked = computed(() => source.value !== null)
@@ -250,3 +257,9 @@ function confirmStart() {
   startUpload(dataset.value, uploadedFiles.value, TEMP_USER_ID)
 }
 </script>
+
+<style scoped>
+.source-url {
+  overflow-wrap: anywhere;
+}
+</style>

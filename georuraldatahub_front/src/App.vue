@@ -1,6 +1,6 @@
 <template>
   <v-app>
-    <v-navigation-drawer v-if="$route.name !== 'login'" permanent theme="dark">
+    <v-navigation-drawer v-if="$route.name !== 'login'" permanent theme="dark" class="custom-drawer">
       <v-list-item title="GeoRural DataHub" class="py-4 brand-title" />
       <v-divider />
 
@@ -61,13 +61,17 @@ const menuItems = [
   { title: 'Início', icon: 'mdi-home-outline', to: '/home', disabled: false },
   { title: 'Nova carga', icon: 'mdi-plus-circle-outline', to: '/new-load', disabled: false },
   { title: 'Arquivos enviados', icon: 'mdi-file-check-outline', to: '/file-uploads', disabled: false },
-  { title: 'Acompanhar carga', icon: 'mdi-progress-clock', to: '/load-tracking', disabled: true },
-  { title: 'Reconciliar esquema', icon: 'mdi-swap-horizontal', to: '/reconciliation', disabled: true },
-  { title: 'Quarentena', icon: 'mdi-alert-outline', to: '/quarantine', disabled: true },
+ // { title: 'Acompanhar carga', icon: 'mdi-progress-clock', to: '/load-tracking', disabled: true },
+ // { title: 'Reconciliar esquema', icon: 'mdi-swap-horizontal', to: '/reconciliation', disabled: true },
+ // { title: 'Quarentena', icon: 'mdi-alert-outline', to: '/quarantine', disabled: true },
 ]
 </script>
 
 <style scoped>
+.custom-drawer {
+  background-color: #080605 !important;
+}
+
 .upload-bar {
   position: fixed;
   bottom: 0;
