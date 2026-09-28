@@ -208,10 +208,12 @@ function formatSize(bytes: number) {
 }
 
 /* Força o cabeçalho a ficar fixo no topo com um fundo sólido opaco (mesma cor do card/superfície escura) */
-.custom-table :deep(thead tr th) {
+.custom-table :deep(.v-table__wrapper table thead tr th) {
   position: sticky !important;
   top: 0 !important;
-  background-color: #120e0c !important; /* Cor sólida escura para cobrir o texto que rola por baixo */
+  background: #080808 !important; /* Fundo opaco para impedir que as linhas apareçam por trás */
+  opacity: 1;
+  color: rgba(255, 255, 255, 0.9) !important;
   z-index: 10 !important;
   white-space: nowrap;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4); /* Sombra sutil para destacar o cabeçalho do conteúdo rolando */
