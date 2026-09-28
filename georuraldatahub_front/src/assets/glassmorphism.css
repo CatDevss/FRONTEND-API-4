@@ -1,0 +1,151 @@
+/* ============================================================
+   GeoRural DataHub — glassmorphism "espaço" (estilo Apple, dark)
+   Fundo escuro com campo de estrelas + cards em vidro fosco.
+   Cores primary/secondary da marca (laranja/âmbar) mantidas —
+   este arquivo só ajusta superfícies, fundo e contraste de texto.
+   ============================================================ */
+
+:root {
+  /* Painel externo — vidro bem sutil, quase invisível, só organiza o layout */
+  --glass-outer-bg: rgba(255, 240, 225, 0.035);
+  --glass-outer-border: rgba(255, 255, 255, 0.07);
+
+  /* "Tiles" internas (fonte selecionável, resumo, etc.) — vidro mais presente */
+  --glass-tile-bg: linear-gradient(160deg, rgba(90, 55, 34, 0.5), rgba(30, 20, 16, 0.55));
+  --glass-tile-border: rgba(255, 255, 255, 0.1);
+
+  --glass-shadow: 0 10px 34px rgba(0, 0, 0, 0.45);
+
+  /* Fundo estrelado — gradiente quente/frio escuro por trás do céu de estrelas */
+  --space-gradient: radial-gradient(
+      1200px 700px at 15% 10%,
+      rgba(120, 60, 20, 0.16) 0%,
+      transparent 55%
+    ),
+    linear-gradient(150deg, #140e0a 0%, #0c0a10 45%, #050408 100%);
+}
+
+html {
+  background: var(--space-gradient);
+}
+
+body {
+  min-height: 100vh;
+  background: var(--space-gradient);
+  background-attachment: fixed;
+}
+
+/* Campo de estrelas por cima do gradiente, cobrindo a viewport inteira */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: url('./stars.svg');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+#app {
+  position: relative;
+  z-index: 1;
+}
+
+/* Deixa o fundo estrelado aparecer por trás do Vuetify */
+.v-application,
+.v-application__wrap,
+.v-main {
+  background: transparent !important;
+}
+
+/* ---------- Painel externo — vidro sutil ---------- */
+.v-card,
+.v-sheet:not(.v-navigation-drawer) {
+  background: var(--glass-outer-bg) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  backdrop-filter: blur(20px) saturate(140%);
+  border: 1px solid var(--glass-outer-border) !important;
+  border-radius: 20px !important;
+  box-shadow: var(--glass-shadow) !important;
+}
+
+.v-card > .v-card-title,
+.v-card > .v-card-subtitle,
+.v-card > .v-card-text,
+.v-card > .v-card-actions,
+.v-card > .v-form {
+  background: transparent !important;
+}
+
+/* Texto legível sobre o vidro escuro, independentemente do tema herdado */
+.v-card:not(.v-navigation-drawer) .v-card-title {
+  color: rgba(255, 255, 255, 0.94) !important;
+}
+.v-card:not(.v-navigation-drawer) .v-card-subtitle {
+  color: rgba(255, 255, 255, 0.62) !important;
+}
+.v-card:not(.v-navigation-drawer) .v-card-text {
+  color: rgba(255, 255, 255, 0.88) !important;
+}
+
+/* ---------- Tiles internas — vidro mais presente, tom quente ---------- */
+.v-card .v-card {
+  background: var(--glass-tile-bg) !important;
+  border: 1px solid var(--glass-tile-border) !important;
+  border-radius: 16px !important;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  backdrop-filter: blur(16px) saturate(160%);
+}
+
+/* Tabela some no fundo do card de vidro */
+.v-table {
+  background: transparent !important;
+  color: rgba(255, 255, 255, 0.88);
+}
+.v-table > .v-table__wrapper > table > thead > tr > th {
+  background: rgba(255, 255, 255, 0.05) !important;
+  color: rgba(255, 255, 255, 0.7) !important;
+}
+
+/* ---------- Menu lateral — quase invisível, deixa as estrelas passarem ---------- */
+.v-navigation-drawer {
+  background: rgba(10, 8, 10, 0.4) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(140%);
+  backdrop-filter: blur(22px) saturate(140%);
+  border-right: 1px solid rgba(255, 255, 255, 0.06) !important;
+}
+
+/* Marca no topo do menu, em laranja */
+.v-navigation-drawer .brand-title .v-list-item-title {
+  color: #ffb066;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+/* Item ativo do menu — realce em vidro laranja translúcido */
+.v-navigation-drawer .v-list-item--active {
+  background: rgba(254, 80, 0, 0.14) !important;
+  border: 1px solid rgba(254, 80, 0, 0.45) !important;
+  border-radius: 12px !important;
+  color: #ff8a3d !important;
+}
+.v-navigation-drawer .v-list-item--active .v-icon {
+  color: #ff8a3d !important;
+}
+.v-navigation-drawer .v-list-item--active .v-list-item-title {
+  color: #ff8a3d !important;
+}
+
+/* ---------- Campos de formulário ---------- */
+.v-field {
+  border-radius: 12px !important;
+}
+
+/* ---------- Diálogos também flutuam como painéis de vidro escuro ---------- */
+.v-overlay__content > .v-card {
+  background: linear-gradient(160deg, rgba(35, 25, 20, 0.82), rgba(15, 12, 14, 0.88)) !important;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6) !important;
+}
