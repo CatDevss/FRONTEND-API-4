@@ -252,9 +252,9 @@ function cancel() {
 }
 
 function confirmStart() {
-  if (!step4Unlocked.value || dataset.value === null) return
+  if (!step4Unlocked.value || dataset.value === null || source.value === null) return
   // Dispara o envio no gerenciador global — continua rodando mesmo se o usuário sair desta tela
-  startUpload(dataset.value, uploadedFiles.value, TEMP_USER_ID)
+  startUpload(dataset.value, uploadedFiles.value, TEMP_USER_ID, source.value)
 }
 </script>
 
