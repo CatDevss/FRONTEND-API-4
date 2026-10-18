@@ -9,57 +9,28 @@
     <v-card class="pa-4 mb-4" rounded="lg">
       <v-row align="center">
         <v-col cols="12" md="8">
-          <v-select
-            v-model="selectedObject"
-            :items="geoJsonObjects"
-            label="Arquivo geográfico"
-            placeholder="Selecione um arquivo"
-            variant="outlined"
-            density="comfortable"
-            hide-details
-            clearable
-            :loading="loadingObjects"
-            :disabled="loadingObjects || geoJsonObjects.length === 0"
-          />
+          <v-select v-model="selectedObject" :items="geoJsonObjects" label="Arquivo geográfico"
+            placeholder="Selecione um arquivo" variant="outlined" density="comfortable" hide-details clearable
+            :loading="loadingObjects" :disabled="loadingObjects || geoJsonObjects.length === 0" />
         </v-col>
 
         <v-col cols="12" md="4">
-          <v-btn
-            block
-            color="primary"
-            :disabled="!selectedObject || loadingGeoJson"
-            :loading="loadingGeoJson"
-            @click="loadGeoJson"
-          >
+          <v-btn block color="primary" :disabled="!selectedObject || loadingGeoJson" :loading="loadingGeoJson"
+            @click="loadGeoJson">
             Carregar no mapa
           </v-btn>
         </v-col>
       </v-row>
 
-      <v-alert
-        v-if="errorMessage"
-        type="error"
-        variant="tonal"
-        class="mt-4"
-      >
+      <v-alert v-if="errorMessage" type="error" variant="tonal" class="mt-4">
         {{ errorMessage }}
       </v-alert>
 
-      <v-alert
-        v-else-if="geoJsonObjects.length === 0 && !loadingObjects"
-        type="info"
-        variant="tonal"
-        class="mt-4"
-      >
+      <v-alert v-else-if="geoJsonObjects.length === 0 && !loadingObjects" type="info" variant="tonal" class="mt-4">
         Nenhum arquivo GeoJSON foi encontrado no bucket.
       </v-alert>
 
-      <v-alert
-        v-else-if="loadedFeatureCount !== null"
-        type="success"
-        variant="tonal"
-        class="mt-4"
-      >
+      <v-alert v-else-if="loadedFeatureCount !== null" type="success" variant="tonal" class="mt-4">
         {{ loadedFeatureCount }} feição(ões) carregada(s).
       </v-alert>
     </v-card>
@@ -203,13 +174,17 @@ async function loadGeoJson() {
     }
 
     loadedFeatureCount.value = geoJson.features.length
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Erro ao carregar GeoJSON:', error)
 
-    errorMessage.value =
-      'Não foi possível carregar o arquivo geográfico selecionado.'
+    if (error instanceof Error) {
+      errorMessage.value = error.message
+    } else {
+      errorMessage.value = 'Ocorreu um erro inesperado ao carregar o arquivo.'
+    }
 
     loadedFeatureCount.value = null
+
   } finally {
     loadingGeoJson.value = false
   }
