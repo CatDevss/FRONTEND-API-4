@@ -41,8 +41,8 @@ export function cancelUpload() {
   controller?.abort()
 }
 
-export async function startUpload(datasetId: number, files: File[], userId: number) {
-  if (isUploadInProgress.value) return 
+export async function startUpload(datasetId: number, files: File[], userId: number, sourceId: number) {
+  if (isUploadInProgress.value) return
 
   controller = new AbortController()
   isUploadInProgress.value = true
@@ -66,7 +66,7 @@ export async function startUpload(datasetId: number, files: File[], userId: numb
 
     try {
       await axios.post(`/conjuntos/${datasetId}/arquivos`, formData, {
-        params: { userId },
+        params: { userId, sourceId },
         headers: { 'Content-Type': 'multipart/form-data' },
         signal: controller.signal,
         onUploadProgress: (event) => {
@@ -81,12 +81,12 @@ export async function startUpload(datasetId: number, files: File[], userId: numb
         wasCancelled = true
         break
       }
-      const status = axios.isAxiosError(error) ? error.response?.status : undefined
-      const backendMessage = axios.isAxiosError(error) ? error.response?.data?.message : undefined
+      const data = axios.isAxiosError(error) ? error.response?.data : undefined
+      const backendMessage = typeof data === 'string' ? data : data?.message
       uploadResults.value.push({
         name: file.name,
         success: false,
-        message: describeError(status, backendMessage),
+        message: describeError(axios.isAxiosError(error) ? error.response?.status : undefined, backendMessage)
       })
     }
 
