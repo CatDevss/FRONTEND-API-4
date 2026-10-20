@@ -1,6 +1,11 @@
 <template>
   <v-app>
-    <v-navigation-drawer v-if="$route.name !== 'login'" permanent theme="dark" class="custom-drawer">
+    <v-navigation-drawer
+      v-if="$route.name !== 'login'"
+      permanent
+      theme="dark"
+      class="custom-drawer"
+    >
       <v-list-item title="GeoRural DataHub" class="py-4 brand-title" />
       <v-divider />
 
@@ -10,21 +15,31 @@
           :key="item.title"
           :title="item.title"
           :prepend-icon="item.icon"
-          :to="item.disabled ? undefined : item.to"
-          :disabled="item.disabled"
+          :to="item.to"
         />
       </v-list>
 
       <template #append>
         <v-list nav>
-          <v-list-item title="Sair" prepend-icon="mdi-logout" to="/" />
+          <v-list-item
+            :title="sessionUser ? `${sessionUser.name} — ${sessionUser.userType}` : 'Sem sessão'"
+          /><v-list-item
+            title="Sair"
+            prepend-icon="mdi-logout"
+            to="/"
+            @click="setSessionUser(null)"
+          />
         </v-list>
       </template>
     </v-navigation-drawer>
 
     <v-main>
-      <v-container :fluid="$route.name === 'home'" :class="{ 'workspace-container': $route.name === 'home' }">
-        <RouterView />
+      <v-container
+        :fluid="$route.name === 'home'"
+        :class="{ 'workspace-container': $route.name === 'home' }"
+      >
+        <DevelopmentSession v-if="development" :compact="$route.name === 'home'" />
+        <RouterView :key="`${sessionUser?.id}-${sessionUser?.userType}`" />
       </v-container>
     </v-main>
 
@@ -46,6 +61,11 @@
 </template>
 
 <script setup lang="ts">
+import { computed, watch } from 'vue'
+import DevelopmentSession from '@/components/DevelopmentSession.vue'
+import { useWorkspaceStore } from '@/stores/workspace'
+import { useRoute, useRouter } from 'vue-router'
+import { allowedNavigation, sessionUser, setSessionUser, can } from '@/access/session'
 import {
   isUploadInProgress,
   currentFileName,
@@ -57,18 +77,20 @@ import {
   uploadSnackbarMessage,
 } from '@/composables/uploadLock'
 
-const menuItems = [
-  { title: 'Fontes', icon: 'mdi-database-outline', to: '/sources', disabled: false },
-  { title: 'Dicionários', icon: 'mdi-book-open-outline', to: '/dictionaries', disabled: false },
-  { title: 'Conjuntos', icon: 'mdi-folder-outline', to: '/datasets', disabled: false },
-
-  { title: 'Workspace geográfico', icon: 'mdi-home-outline', to: '/home', disabled: false },
-  { title: 'Nova carga', icon: 'mdi-plus-circle-outline', to: '/new-load', disabled: false },
-  { title: 'Arquivos enviados', icon: 'mdi-file-check-outline', to: '/file-uploads', disabled: false },
- // { title: 'Acompanhar carga', icon: 'mdi-progress-clock', to: '/load-tracking', disabled: true },
- // { title: 'Reconciliar esquema', icon: 'mdi-swap-horizontal', to: '/reconciliation', disabled: true },
- // { title: 'Quarentena', icon: 'mdi-alert-outline', to: '/quarantine', disabled: true },
-]
+const workspace = useWorkspaceStore()
+const route = useRoute(),
+  router = useRouter()
+watch(
+  () => sessionUser.value,
+  () => {
+    cancelUpload()
+    workspace.reset()
+    if (route.meta.permission && !can(route.meta.permission))
+      void router.replace('/access-required')
+  },
+)
+const development = import.meta.env.DEV
+const menuItems = computed(allowedNavigation)
 </script>
 
 <style scoped>

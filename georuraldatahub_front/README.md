@@ -52,3 +52,7 @@ npm run test:unit
 ```sh
 npm run lint
 ```
+
+## Integração com o backend
+
+Consulte [INTEGRATION.md](./INTEGRATION.md) para os contratos BE-03/BE-04, configuração da API, verificações e pendências de homologação.
