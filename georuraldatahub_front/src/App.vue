@@ -23,7 +23,7 @@
     </v-navigation-drawer>
 
     <v-main>
-      <v-container>
+      <v-container :fluid="$route.name === 'home'" :class="{ 'workspace-container': $route.name === 'home' }">
         <RouterView />
       </v-container>
     </v-main>
@@ -62,7 +62,7 @@ const menuItems = [
   { title: 'Dicionários', icon: 'mdi-book-open-outline', to: '/dictionaries', disabled: false },
   { title: 'Conjuntos', icon: 'mdi-folder-outline', to: '/datasets', disabled: false },
 
-  { title: 'Início', icon: 'mdi-home-outline', to: '/home', disabled: false },
+  { title: 'Workspace geográfico', icon: 'mdi-home-outline', to: '/home', disabled: false },
   { title: 'Nova carga', icon: 'mdi-plus-circle-outline', to: '/new-load', disabled: false },
   { title: 'Arquivos enviados', icon: 'mdi-file-check-outline', to: '/file-uploads', disabled: false },
  // { title: 'Acompanhar carga', icon: 'mdi-progress-clock', to: '/load-tracking', disabled: true },
@@ -72,6 +72,14 @@ const menuItems = [
 </script>
 
 <style scoped>
+.workspace-container {
+  height: calc(100dvh - var(--v-layout-top, 0px) - var(--v-layout-bottom, 0px));
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 .custom-drawer {
   background-color: #080605 !important;
 }
