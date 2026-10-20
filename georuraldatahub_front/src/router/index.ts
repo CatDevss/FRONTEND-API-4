@@ -7,6 +7,8 @@ import FileUploads from '../views/FileUploadsView.vue'
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
+    { path: '/sources', component: () => import('../views/SourcesView.vue') },
+
     { path: '/',
       name: 'login',
       component: LoginView },

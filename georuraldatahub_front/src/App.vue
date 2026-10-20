@@ -58,6 +58,8 @@ import {
 } from '@/composables/uploadLock'
 
 const menuItems = [
+  { title: 'Fontes', icon: 'mdi-database-outline', to: '/sources', disabled: false },
+
   { title: 'Início', icon: 'mdi-home-outline', to: '/home', disabled: false },
   { title: 'Nova carga', icon: 'mdi-plus-circle-outline', to: '/new-load', disabled: false },
   { title: 'Arquivos enviados', icon: 'mdi-file-check-outline', to: '/file-uploads', disabled: false },

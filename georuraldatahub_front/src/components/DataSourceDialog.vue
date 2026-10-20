@@ -37,13 +37,14 @@
 <script setup lang="ts">
 import { nextTick, reactive, ref } from 'vue'
 import axios from 'axios'
+import { can, currentUserId } from '@/access/session'
+import { apiError, type Source } from '@/services/contracts'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 
-const emit = defineEmits<{ saved: [] }>()
+const emit = defineEmits<{ saved: [source: Source] }>()
 const model = defineModel<boolean>({ default: false })
 
-// TODO: por enquanto fixo, no futuro vem de uma sessão de usuário real
-const TEMP_USER_ID = 1
+const props = defineProps<{ userId: number }>()
 
 const showConfirm = ref(false)
 const saving = ref(false)
@@ -79,21 +80,20 @@ function close() {
 }
 
 async function save() {
+  if (!can('sources.create') || currentUserId.value !== props.userId || saving.value) return
   saving.value = true
   errorMessage.value = ''
 
   try {
-    await axios.post('/fontes', {
+    const { data } = await axios.post<Source>('/fontes', {
       name: dataSource.name.trim(),
       url: dataSource.url.trim(),
-      userId: TEMP_USER_ID,
+      userId: props.userId,
     })
-    emit('saved')
+    emit('saved', data)
     close()
   } catch (error) {
-    errorMessage.value = axios.isAxiosError(error)
-      ? (error.response?.data?.message ?? 'Erro ao salvar a fonte.')
-      : 'Erro desconhecido ao salvar a fonte.'
+    errorMessage.value = apiError(error)
   } finally {
     saving.value = false
   }
