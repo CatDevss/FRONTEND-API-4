@@ -8,6 +8,7 @@ const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
     { path: '/sources', component: () => import('../views/SourcesView.vue') },
+    { path: '/dictionaries', component: () => import('../views/DictionariesView.vue') },
 
     { path: '/',
       name: 'login',
