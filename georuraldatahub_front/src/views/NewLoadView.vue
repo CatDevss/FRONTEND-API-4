@@ -1,265 +1,370 @@
 <template>
-  <div class="mx-auto" style="max-width: 900px">
-    <h1 class="text-h5 font-weight-bold">Nova carga de dados</h1>
-    <p class="text-medium-emphasis mb-4">
-      Configure os parâmetros de ingestão e inicie o pipeline no Airflow
-    </p>
-
-    <!-- Indicador de etapas -->
-    <div class="d-flex align-center ga-2 mb-6 text-caption">
-      <template v-for="(step, i) in steps" :key="step.title">
-        <v-icon v-if="i > 0" icon="mdi-chevron-right" size="small" />
-        <span :class="step.unlocked ? 'text-primary font-weight-medium' : 'text-medium-emphasis'">
-          {{ step.title }}
-        </span>
-      </template>
+  <div class="mx-auto ingestion-page">
+    <div class="d-flex align-center flex-wrap ga-3 mb-2">
+      <h1 class="text-h5 font-weight-bold">Nova ingestão de dados</h1>
+      <v-spacer />
+      <v-btn v-if="mode" variant="outlined" :disabled="locked" @click="changeMode"
+        >Trocar modalidade</v-btn
+      >
     </div>
+    <p class="text-medium-emphasis mb-6">Escolha como os dados chegarão ao GeoRural DataHub.</p>
 
-    <!-- 1. Fonte de dados (sempre liberada) -->
-    <v-card class="mb-6">
-      <v-card-title class="d-flex align-center">
-        1. Fonte de dados
-        <v-spacer />
-        <v-btn
-          size="small"
-          variant="outlined"
-          prepend-icon="mdi-plus"
-          @click="showDataSourceDialog = true"
-        >
-          Nova fonte
-        </v-btn>
-      </v-card-title>
-      <v-card-subtitle v-if="!step2Unlocked">
-        Selecione uma fonte ou cadastre uma nova
-      </v-card-subtitle>
-      <v-card-text>
-        <v-progress-circular v-if="loadingSources" indeterminate color="primary" />
-        <v-row v-else>
-          <v-col v-for="s in sources" :key="s.id" cols="6" md="3">
-            <v-card
-              variant="outlined"
-              :color="source === s.id ? 'primary' : undefined"
-              class="pa-4 text-center h-100"
-              role="button"
-              tabindex="0"
-              :aria-pressed="source === s.id"
-              @click="selectSource(s)"
-              @keydown.enter="selectSource(s)"
-              @keydown.space.prevent="selectSource(s)"
+    <template v-if="!mode">
+      <h2 class="text-h6 mb-4">Qual serviço você quer utilizar?</h2>
+      <v-row>
+        <v-col cols="12" md="6">
+          <v-card class="pa-6 h-100" variant="outlined">
+            <v-icon icon="mdi-file-upload-outline" size="40" color="primary" />
+            <h3 class="text-h6 mt-3">Ingestão manual</h3>
+            <p class="my-3">Envie arquivos CSV ou GeoJSON e informe a fonte de origem dos dados.</p>
+            <v-btn color="primary" :disabled="locked" @click="chooseMode('manual')"
+              >Enviar meus arquivos</v-btn
             >
-              <v-avatar
-                rounded="lg"
-                size="40"
-                :color="source === s.id ? 'primary' : 'grey-lighten-2'"
-              >
-                {{ s.name.slice(0, 2).toUpperCase() }}
-              </v-avatar>
-              <div class="text-subtitle-2 mt-2">{{ s.name }}</div>
-              <v-icon v-if="source === s.id" icon="mdi-check-circle" color="primary" class="mt-1" />
-            </v-card>
-          </v-col>
+          </v-card>
+        </v-col>
+        <v-col cols="12" md="6">
+          <v-card class="pa-6 h-100" variant="outlined">
+            <v-icon icon="mdi-cloud-download-outline" size="40" color="primary" />
+            <h3 class="text-h6 mt-3">Ingestão automatizada</h3>
+            <p class="my-3">Escolha um serviço oficial para coletar e validar dados do Paraná.</p>
+            <v-btn color="primary" :disabled="locked" @click="chooseMode('automatic')"
+              >Escolher serviço</v-btn
+            >
+          </v-card>
+        </v-col>
+      </v-row>
+    </template>
 
-          <v-col v-if="sources.length === 0" cols="12">
-            <p class="text-medium-emphasis">Nenhuma fonte cadastrada ainda.</p>
+    <template v-else>
+      <v-chip class="mb-4" color="primary">{{
+        mode === 'manual' ? 'Ingestão manual' : 'Ingestão automatizada'
+      }}</v-chip>
+      <v-alert v-if="resourceError" type="error" class="mb-4"
+        >{{ resourceError }}
+        <v-btn variant="text" :loading="loading" :disabled="locked" @click="loadResources"
+          >Tentar novamente</v-btn
+        ></v-alert
+      >
+      <v-progress-linear v-if="loading" indeterminate class="mb-4" />
+
+      <v-card v-if="mode === 'automatic'" class="pa-4 mb-5">
+        <h2 class="text-h6 mb-2">1. Escolha o serviço</h2>
+        <p class="mb-4">
+          Selecione o produto para localizar sua fonte cadastrada. A coleta será executada ao
+          confirmar os parâmetros.
+        </p>
+        <v-row>
+          <v-col v-for="entry in automaticConnectors" :key="entry.id" cols="12" sm="6">
+            <v-btn
+              block
+              class="service-button"
+              height="auto"
+              :variant="product === entry.id ? 'flat' : 'outlined'"
+              :color="product === entry.id ? 'primary' : undefined"
+              :disabled="locked || loading"
+              :aria-pressed="product === entry.id"
+              @click="selectProduct(entry.id)"
+            >
+              <span>{{ entry.agency }}<br />{{ entry.product }}</span>
+            </v-btn>
           </v-col>
         </v-row>
-        <template v-if="source !== null">
-          <v-divider class="my-4" />
-          <div class="text-subtitle-1 font-weight-medium">{{ sourceName }}</div>
-          <div class="text-body-2 source-url">{{ sourceUrl || '—' }}</div>
-        </template>
-      </v-card-text>
-    </v-card>
+        <p v-if="!loading && !automaticConnectors.length" class="mt-3">
+          Nenhum serviço automático disponível.
+        </p>
+      </v-card>
 
-    <!-- 2. Conjunto (libera após escolher a fonte) -->
-    <v-card class="mb-6" :disabled="!step2Unlocked">
-      <v-card-title class="d-flex align-center">
-        2. Conjunto
-        <v-icon v-if="!step2Unlocked" icon="mdi-lock-outline" size="small" class="ml-1" />
-        <v-spacer />
-        <v-btn
-          size="small"
-          variant="outlined"
-          prepend-icon="mdi-plus"
-          @click="showDataSetDialog = true"
-        >
-          Novo conjunto
-        </v-btn>
-      </v-card-title>
-      <v-card-subtitle v-if="!step2Unlocked">
-        Escolha uma fonte de dados para liberar esta etapa.
-      </v-card-subtitle>
-      <v-card-text>
-        <DatasetSelect
-          :key="datasetSelectKey"
-          v-model="dataset"
-          :source-id="source"
-          @update:name="datasetName = $event"
+      <v-card v-if="mode === 'manual'" class="pa-4 mb-5" :disabled="locked">
+        <h2 class="text-h6 mb-2">1. Selecione os arquivos</h2>
+        <p class="mb-4">
+          CSV e GeoJSON. Shapefile, GeoPackage e GeoTIFF não estão disponíveis no envio manual.
+        </p>
+        <FileUploadList
+          v-model="uploadedFiles"
+          :allowed-extensions="['csv', 'geojson']"
+          :disabled="locked"
         />
-      </v-card-text>
-    </v-card>
+      </v-card>
 
-    <!-- 3. Arquivo -->
-    <v-card class="mb-6" :disabled="!step2Unlocked">
-      <v-card-title>
-        3. Arquivo
-        <v-icon v-if="!step2Unlocked" icon="mdi-lock-outline" size="small" class="ml-1" />
-      </v-card-title>
-      <v-card-subtitle v-if="!step2Unlocked">
-        Escolha uma fonte de dados para liberar esta etapa.
-      </v-card-subtitle>
-      <v-card-text>
-        <FileUploadList v-model="uploadedFiles" :allowed-extensions="allowedExtensions" />
-      </v-card-text>
-    </v-card>
+      <v-card v-if="mode === 'manual' || selectedConnector" class="pa-4 mb-5" :disabled="locked">
+        <h2 class="text-h6 mb-3">2. Fonte de origem</h2>
+        <p class="mb-3">
+          {{
+            mode === 'manual'
+              ? 'Informe de onde vieram os dados. A fonte define o dicionário usado na validação.'
+              : 'A fonte precisa corresponder ao órgão do serviço escolhido.'
+          }}
+        </p>
+        <v-alert
+          v-if="mode === 'automatic' && compatibleSources.length === 1"
+          type="info"
+          variant="tonal"
+          class="mb-3"
+          >Fonte identificada automaticamente: {{ compatibleSources[0]?.name }}.</v-alert
+        >
+        <v-alert
+          v-else-if="mode === 'automatic' && compatibleSources.length > 1"
+          type="info"
+          variant="tonal"
+          class="mb-3"
+          >Há mais de uma fonte compatível. Escolha a origem correta para utilizar o dicionário
+          correspondente.</v-alert
+        >
+        <v-alert
+          v-else-if="mode === 'automatic' && !loading"
+          type="warning"
+          variant="tonal"
+          class="mb-3"
+          >Nenhuma fonte cadastrada corresponde a este serviço. Um gestor deve cadastrar a fonte com
+          a URL oficial.</v-alert
+        >
+        <v-select
+          v-model="sourceId"
+          :items="mode === 'manual' ? sources : compatibleSources"
+          item-title="name"
+          item-value="id"
+          label="Fonte dos dados"
+          :loading="loading"
+          :disabled="loading || locked"
+          clearable
+        />
+        <p v-if="selectedSource" class="text-caption mb-3 source-url">{{ selectedSource.url }}</p>
+        <p class="text-caption">Fontes e dicionários oficiais são gerenciados pelo Gestor.</p>
+        <v-alert v-if="dictionaryError" type="error" class="mt-4">{{ dictionaryError }}</v-alert>
+        <v-progress-linear v-if="loadingDictionary" indeterminate class="mt-4" />
+        <v-alert
+          v-else-if="sourceId"
+          :type="latestDictionary ? 'info' : 'warning'"
+          variant="tonal"
+          class="mt-4"
+        >
+          <template v-if="latestDictionary"
+            >Dicionário: {{ latestDictionary.name }}, versão {{ latestDictionary.version }}. O
+            backend selecionará a versão mais recente no momento da ingestão.</template
+          >
+          <template v-else
+            >Solicite ao Gestor um dicionário para esta fonte antes de receber dados.</template
+          >
+          <div class="mt-2">
+            <v-btn to="/dictionaries" variant="text">Consultar dicionários</v-btn
+            ><v-btn variant="text" :disabled="locked" @click="loadDictionary"
+              >Conferir novamente</v-btn
+            >
+          </div>
+        </v-alert>
+      </v-card>
 
-    <!-- 4. Resumo e ação -->
-    <v-card class="mb-6">
-      <v-card-title>
-        4. Resumo da carga
-        <v-icon v-if="!step4Unlocked" icon="mdi-lock-outline" size="small" class="ml-1" />
-      </v-card-title>
-      <v-card-subtitle v-if="!step4Unlocked">
-        Anexe um arquivo para liberar o início da carga.
-      </v-card-subtitle>
-      <v-card-text>
-        <v-row class="mb-4" :class="{ 'opacity-50': !step4Unlocked }">
-          <v-col v-for="item in summary" :key="item.label" cols="12" sm="6">
-            <v-card variant="outlined" class="pa-3">
-              <div class="text-caption text-medium-emphasis text-uppercase">{{ item.label }}</div>
-              <div class="text-subtitle-2">{{ item.value }}</div>
-            </v-card>
-          </v-col>
-        </v-row>
-
+      <p class="mb-4">
+        Responsável: {{ sessionUser?.name || 'Sessão não disponível' }}. Os arquivos serão recebidos
+        pela fonte; você pode organizá-los em conjuntos depois.
+      </p>
+      <v-card v-if="mode === 'manual'" class="pa-4 mb-5">
+        <h2 class="text-h6 mb-3">3. Enviar e validar</h2>
+        <p>Fonte: {{ selectedSource?.name || 'Não selecionada' }}</p>
+        <p class="mb-4">
+          {{ uploadedFiles.length }} arquivo(s). Cada arquivo gera uma ingestão própria. O resultado
+          da validação será apresentado após o envio.
+        </p>
         <v-btn
           color="primary"
-          prepend-icon="mdi-lightning-bolt"
-          :disabled="!step4Unlocked || isUploadInProgress"
+          :disabled="!manualReady || locked"
+          :loading="isUploadInProgress"
           @click="showConfirm = true"
+          >Enviar e validar arquivos</v-btn
         >
-          Iniciar carga
-        </v-btn>
-      </v-card-text>
-    </v-card>
+        <p v-if="!manualReady" class="text-caption mt-3">
+          Selecione arquivo e fonte com dicionário para continuar com o usuário da sessão.
+        </p>
+      </v-card>
+      <CollectionForm
+        v-else-if="selectedConnector"
+        :key="`${product}-${sourceId}-${userId}`"
+        :connector="selectedConnector"
+        :source-id="sourceId"
+        :source-url="selectedSource?.url || ''"
+        :user-id="userId"
+        :ready="collectionReady"
+        @busy="collectionBusy = $event"
+        @collected="loadDictionary"
+      />
 
-    <DataSourceDialog v-model="showDataSourceDialog" @saved="fetchSources" />
-    <DataSetDialog v-model="showDataSetDialog" :source-id="source" @saved="fetchDatasetsAgain" />
+      <template v-if="mode === 'manual' && uploadResults.length">
+        <h2 class="text-h6 mb-3">Resultado do último envio</h2>
+        <v-card v-for="(result, i) in uploadResults" :key="i" class="pa-4 mb-4"
+          ><strong>{{ result.name }}</strong>
+          <p>{{ result.message }}</p>
+          <ValidationResult v-if="result.validation" :report="result.validation"
+        /></v-card>
+      </template>
+      <v-expansion-panels v-if="mode === 'automatic'" class="mt-4"
+        ><v-expansion-panel title="Outras fontes e disponibilidade"
+          ><v-expansion-panel-text
+            ><div v-for="entry in otherConnectors" :key="entry.id" class="mb-3">
+              <strong>{{ entry.agency }} — {{ entry.product }}</strong>
+              <p>{{ entry.access === 'MANUAL' ? 'Coleta manual' : 'Aguarda homologação' }}</p>
+              <p>{{ entry.limitations }}</p>
+            </div></v-expansion-panel-text
+          ></v-expansion-panel
+        ></v-expansion-panels
+      >
+    </template>
 
     <ConfirmDialog
       v-model="showConfirm"
-      title="Iniciar carga"
-      message="Deseja iniciar a carga com os parâmetros selecionados?"
-      @confirm="confirmStart"
+      title="Enviar e validar arquivos"
+      message="Enviar os arquivos para a fonte selecionada com o usuário da sessão? Apenas os registros aprovados ficarão disponíveis para tratamento e visualização."
+      @confirm="submitManual"
     />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onMounted, ref, watch } from 'vue'
 import axios from 'axios'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
-import DataSourceDialog from '@/components/DataSourceDialog.vue'
-import DataSetDialog from '@/components/DataSetDialog.vue'
 import FileUploadList from '@/components/upload/FileUploadList.vue'
-import DatasetSelect from '@/components/DatasetSelect.vue'
-import { isUploadInProgress, startUpload } from '@/composables/uploadLock'
+import CollectionForm from '@/components/CollectionForm.vue'
+import ValidationResult from '@/components/ValidationResult.vue'
+import {
+  apiError,
+  sourceSupportsProduct,
+  supportedProducts,
+  type Connector,
+  type Dictionary,
+  type Source,
+} from '@/services/contracts'
+import { can, currentUserId as userId, sessionUser } from '@/access/session'
+import { isUploadInProgress, startUpload, uploadResults } from '@/composables/uploadLock'
 
-interface SourceOption {
-  id: number
-  name: string
-  url: string
-}
-
-const router = useRouter()
-const showDataSourceDialog = ref(false)
-const showDataSetDialog = ref(false)
-
-const sources = ref<SourceOption[]>([])
-const loadingSources = ref(false)
-
-const datasetSelectKey = ref(0)
-
-function fetchDatasetsAgain() {
-  datasetSelectKey.value++
-}
-
-async function fetchSources() {
-  loadingSources.value = true
-  try {
-    const { data } = await axios.get<SourceOption[]>('/fontes')
-    sources.value = data
-  } catch (error) {
-    console.error('Erro ao carregar fontes', error)
-  } finally {
-    loadingSources.value = false
-  }
-}
-
-onMounted(fetchSources)
-
-// TODO: por enquanto fixo, no futuro vem de uma sessão de usuário real
-const TEMP_USER_ID = 1
-
-// Nothing is chosen at the beginning
-const source = ref<number | null>(null)
-const dataset = ref<number | null>(null)
-const datasetName = ref('')
-const uploadedFiles = ref<File[]>([])
-const allowedExtensions = ['shp', 'gpkg', 'geojson', 'csv', 'tif', 'tiff']
+const mode = ref<'manual' | 'automatic' | null>(null)
+const sources = ref<Source[]>([]),
+  catalog = ref<Connector[]>([])
+const loading = ref(false),
+  resourceError = ref(''),
+  dictionaryError = ref('')
+const sourceId = ref<number | null>(null)
+const product = ref<string | null>(null),
+  uploadedFiles = ref<File[]>([])
 const showConfirm = ref(false)
-
-function selectSource(s: SourceOption) {
-  source.value = s.id
-  dataset.value = null // trocar de fonte limpa o conjunto escolhido
-  datasetName.value = ''
-}
-
-const sourceName = computed(() => sources.value.find((s) => s.id === source.value)?.name ?? '')
-const sourceUrl = computed(() => sources.value.find((s) => s.id === source.value)?.url ?? '')
-
-// Each step is unlocked only when the previous one is complete
-const step2Unlocked = computed(() => source.value !== null)
-
-const step3Unlocked = computed(
-  () => step2Unlocked.value && dataset.value !== null && uploadedFiles.value.length > 0,
+const collectionBusy = ref(false),
+  loadingDictionary = ref(false)
+const latestDictionary = ref<Dictionary | null>(null)
+const locked = computed(() => isUploadInProgress.value || collectionBusy.value)
+const automaticConnectors = computed(() =>
+  catalog.value.filter((c) => c.access === 'AUTOMATICO' && supportedProducts.includes(c.id)),
+)
+const otherConnectors = computed(() =>
+  catalog.value.filter((c) => c.access !== 'AUTOMATICO' || !supportedProducts.includes(c.id)),
+)
+const selectedConnector = computed(() =>
+  automaticConnectors.value.find((c) => c.id === product.value),
+)
+const compatibleSources = computed(() =>
+  product.value ? sources.value.filter((s) => sourceSupportsProduct(s.url, product.value!)) : [],
+)
+const selectedSource = computed(() => sources.value.find((s) => s.id === sourceId.value))
+const baseReady = computed(
+  () =>
+    !!selectedSource.value &&
+    can('ingestion.run') &&
+    !!userId.value &&
+    !!latestDictionary.value &&
+    !loadingDictionary.value &&
+    !loading.value,
+)
+const manualReady = computed(
+  () => mode.value === 'manual' && baseReady.value && uploadedFiles.value.length > 0,
+)
+const collectionReady = computed(
+  () =>
+    mode.value === 'automatic' &&
+    baseReady.value &&
+    !!selectedConnector.value &&
+    compatibleSources.value.some((s) => s.id === sourceId.value) &&
+    !isUploadInProgress.value,
 )
 
-const step4Unlocked = computed(() => step3Unlocked.value)
-
-const steps = computed(() => [
-  { title: '1. Fonte', unlocked: true },
-  { title: '2. Conjunto', unlocked: step2Unlocked.value },
-  { title: '3. Arquivo', unlocked: step3Unlocked.value },
-  { title: '4. Confirmar', unlocked: step4Unlocked.value },
-])
-
-const summary = computed(() => [
-  { label: 'Fonte', value: sourceName.value || '—' },
-  { label: 'Conjunto', value: datasetName.value || '—' },
-  {
-    label: 'Arquivo',
-    value:
-      uploadedFiles.value.length > 0
-        ? uploadedFiles.value.map((file) => file.name).join(', ')
-        : '—',
-  },
-])
-
-function cancel() {
-  router.push('/home')
+async function loadResources() {
+  loading.value = true
+  resourceError.value = ''
+  const results = await Promise.allSettled([
+    axios.get<Source[]>('/fontes'),
+    axios.get<Connector[]>('/fontes/conectores'),
+  ])
+  const [sourceResult, catalogResult] = results
+  sources.value = sourceResult.status === 'fulfilled' ? sourceResult.value.data : []
+  catalog.value = catalogResult.status === 'fulfilled' ? catalogResult.value.data : []
+  resourceError.value = results
+    .filter((r) => r.status === 'rejected')
+    .map((r) => apiError(r.reason, 'Não foi possível carregar as opções de ingestão.'))
+    .join(' ')
+  if (!sources.value.some((s) => s.id === sourceId.value)) sourceId.value = null
+  if (mode.value === 'automatic') resolveSource()
+  loading.value = false
 }
-
-function confirmStart() {
-  if (!step4Unlocked.value || dataset.value === null || source.value === null) return
-  // Dispara o envio no gerenciador global — continua rodando mesmo se o usuário sair desta tela
-  startUpload(dataset.value, uploadedFiles.value, TEMP_USER_ID, source.value)
+function chooseMode(value: 'manual' | 'automatic') {
+  if (!locked.value) mode.value = value
 }
+function changeMode() {
+  if (locked.value) return
+  mode.value = null
+  product.value = null
+  sourceId.value = null
+  uploadedFiles.value = []
+  showConfirm.value = false
+}
+function selectProduct(id: string) {
+  if (locked.value || !automaticConnectors.value.some((c) => c.id === id)) return
+  product.value = id
+  sourceId.value = null
+  resolveSource()
+}
+function resolveSource() {
+  if (compatibleSources.value.length === 1) sourceId.value = compatibleSources.value[0]!.id
+  else if (!compatibleSources.value.some((s) => s.id === sourceId.value)) sourceId.value = null
+}
+let dictionaryEpoch = 0
+async function loadDictionary() {
+  const epoch = ++dictionaryEpoch
+  latestDictionary.value = null
+  dictionaryError.value = ''
+  if (!sourceId.value) {
+    loadingDictionary.value = false
+    return
+  }
+  loadingDictionary.value = true
+  try {
+    const { data } = await axios.get<Dictionary[]>(`/fontes/${sourceId.value}/dicionarios`)
+    if (epoch === dictionaryEpoch)
+      latestDictionary.value = data.sort((a, b) => b.version - a.version)[0] ?? null
+  } catch (e) {
+    if (epoch === dictionaryEpoch) dictionaryError.value = apiError(e)
+  } finally {
+    if (epoch === dictionaryEpoch) loadingDictionary.value = false
+  }
+}
+watch(sourceId, loadDictionary)
+async function submitManual() {
+  if (!manualReady.value || locked.value || !sourceId.value || !userId.value) return
+  await startUpload(sourceId.value, [...uploadedFiles.value], userId.value)
+  await loadDictionary()
+}
+onMounted(loadResources)
 </script>
 
 <style scoped>
+.ingestion-page {
+  max-width: 1000px;
+}
 .source-url {
   overflow-wrap: anywhere;
+}
+.service-button {
+  padding: 20px;
+  white-space: normal;
+  text-align: left;
+}
+.service-button :deep(.v-btn__content) {
+  white-space: normal;
 }
 </style>

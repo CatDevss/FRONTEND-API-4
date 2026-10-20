@@ -1,12 +1,21 @@
 import { computed, ref } from 'vue'
 import axios from 'axios'
+import { can, currentUserId } from '@/access/session'
+import {
+  apiError,
+  validationMessage,
+  type IngestedFile,
+  type ValidationReport,
+} from '@/services/contracts'
 
 interface UploadResult {
   name: string
   success: boolean
   message: string
+  validation?: ValidationReport | null
 }
 
+export const isCollectionInProgress = ref(false)
 export const isUploadInProgress = ref(false)
 export const totalFiles = ref(0)
 export const completedFiles = ref(0)
@@ -30,19 +39,18 @@ export const overallProgress = computed(() => {
   )
 })
 
-function describeError(status: number | undefined, backendMessage: string | undefined): string {
-  if (status === 409) return 'Este arquivo já foi enviado anteriormente para este conjunto.'
-  if (status === 404) return 'Conjunto não encontrado. Tente selecionar o conjunto novamente.'
-  if (backendMessage) return backendMessage
-  return 'Não foi possível enviar o arquivo. Tente novamente.'
-}
-
 export function cancelUpload() {
   controller?.abort()
 }
 
-export async function startUpload(datasetId: number, files: File[], userId: number, sourceId: number) {
-  if (isUploadInProgress.value) return
+export async function startUpload(sourceId: number, files: File[], userId: number) {
+  if (
+    isUploadInProgress.value ||
+    files.length === 0 ||
+    !can('ingestion.run') ||
+    currentUserId.value !== userId
+  )
+    return
 
   controller = new AbortController()
   isUploadInProgress.value = true
@@ -53,7 +61,7 @@ export async function startUpload(datasetId: number, files: File[], userId: numb
   let wasCancelled = false
 
   for (const file of files) {
-    if (controller.signal.aborted) {
+    if (controller.signal.aborted || !can('ingestion.run') || currentUserId.value !== userId) {
       wasCancelled = true
       break
     }
@@ -65,9 +73,8 @@ export async function startUpload(datasetId: number, files: File[], userId: numb
     formData.append('file', file)
 
     try {
-      await axios.post(`/conjuntos/${datasetId}/arquivos`, formData, {
-        params: { userId, sourceId },
-        headers: { 'Content-Type': 'multipart/form-data' },
+      const { data } = await axios.post<IngestedFile>(`/fontes/${sourceId}/arquivos`, formData, {
+        params: { userId },
         signal: controller.signal,
         onUploadProgress: (event) => {
           if (event.total) {
@@ -75,18 +82,21 @@ export async function startUpload(datasetId: number, files: File[], userId: numb
           }
         },
       })
-      uploadResults.value.push({ name: file.name, success: true, message: 'Enviado com sucesso' })
+      uploadResults.value.push({
+        name: file.name,
+        success: data.validation?.status === 'VALIDO',
+        message: validationMessage(data.validation),
+        validation: data.validation,
+      })
     } catch (error) {
       if (axios.isCancel(error) || controller.signal.aborted) {
         wasCancelled = true
         break
       }
-      const data = axios.isAxiosError(error) ? error.response?.data : undefined
-      const backendMessage = typeof data === 'string' ? data : data?.message
       uploadResults.value.push({
         name: file.name,
         success: false,
-        message: describeError(axios.isAxiosError(error) ? error.response?.status : undefined, backendMessage)
+        message: apiError(error, 'Não foi possível enviar o arquivo.'),
       })
     }
 
@@ -102,9 +112,9 @@ export async function startUpload(datasetId: number, files: File[], userId: numb
   if (wasCancelled) {
     uploadSnackbarMessage.value = `Envio cancelado. ${successCount} de ${totalFiles.value} arquivo(s) haviam sido enviados.`
   } else if (failedCount > 0) {
-    uploadSnackbarMessage.value = `${successCount} de ${totalFiles.value} arquivo(s) enviados. ${failedCount} falharam.`
+    uploadSnackbarMessage.value = `${successCount} de ${totalFiles.value} arquivo(s) integralmente válidos. ${failedCount} com rejeições, validação indisponível ou erro.`
   } else {
-    uploadSnackbarMessage.value = `${successCount} de ${totalFiles.value} arquivo(s) enviado(s) com sucesso.`
+    uploadSnackbarMessage.value = `${successCount} de ${totalFiles.value} arquivo(s) enviado(s) e integralmente válido(s).`
   }
   uploadSnackbarVisible.value = true
 }
