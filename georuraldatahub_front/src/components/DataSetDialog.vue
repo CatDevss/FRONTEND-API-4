@@ -32,10 +32,12 @@
 <script setup lang="ts">
 import { nextTick, reactive, ref } from 'vue'
 import axios from 'axios'
+import { can, currentUserId } from '@/access/session'
+import { apiError } from '@/services/contracts'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 
-const props = defineProps<{ sourceId: number | null }>()
-const emit = defineEmits<{ saved: [] }>()
+const props = defineProps<{ userId: number }>()
+const emit = defineEmits<{ saved: [dataset: { id: number; name: string }] }>()
 const model = defineModel<boolean>({ default: false })
 
 const showConfirm = ref(false)
@@ -69,25 +71,19 @@ function close() {
 }
 
 async function save() {
-  if (props.sourceId === null) {
-    errorMessage.value = 'Selecione uma fonte antes de cadastrar um conjunto.'
-    return
-  }
-
+  if (!can('datasets.manage') || currentUserId.value !== props.userId || saving.value) return
   saving.value = true
   errorMessage.value = ''
 
   try {
-    await axios.post('/conjuntos', {
+    const { data } = await axios.post<{ id: number; name: string }>('/conjuntos', {
       name: dataSet.name.trim(),
-      sourceId: props.sourceId,
+      userId: props.userId,
     })
-    emit('saved')
+    emit('saved', data)
     close()
   } catch (error) {
-    errorMessage.value = axios.isAxiosError(error)
-      ? (error.response?.data?.message ?? 'Erro ao salvar o conjunto.')
-      : 'Erro desconhecido ao salvar o conjunto.'
+    errorMessage.value = apiError(error)
   } finally {
     saving.value = false
   }

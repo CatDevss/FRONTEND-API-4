@@ -9,6 +9,7 @@ const router = createRouter({
   routes: [
     { path: '/sources', component: () => import('../views/SourcesView.vue') },
     { path: '/dictionaries', component: () => import('../views/DictionariesView.vue') },
+    { path: '/datasets', component: () => import('../views/DatasetsView.vue') },
 
     { path: '/',
       name: 'login',

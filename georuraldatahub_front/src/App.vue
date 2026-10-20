@@ -60,6 +60,7 @@ import {
 const menuItems = [
   { title: 'Fontes', icon: 'mdi-database-outline', to: '/sources', disabled: false },
   { title: 'Dicionários', icon: 'mdi-book-open-outline', to: '/dictionaries', disabled: false },
+  { title: 'Conjuntos', icon: 'mdi-folder-outline', to: '/datasets', disabled: false },
 
   { title: 'Início', icon: 'mdi-home-outline', to: '/home', disabled: false },
   { title: 'Nova carga', icon: 'mdi-plus-circle-outline', to: '/new-load', disabled: false },
