@@ -1,66 +1,155 @@
 <template>
-  <v-card class="mb-6 pa-4" title="3. Parâmetros da coleta">
-    <p class="mb-3">
-      O agendamento é configurado no backend. A coleta abaixo é executada sob demanda.
-    </p>
-    <v-alert v-if="error" type="error" class="mb-3">{{ error }}</v-alert>
-    <p class="mb-3 text-subtitle-1">{{ connector.agency }} — {{ connector.product }}</p>
-    <v-alert v-if="!ready" type="info" variant="tonal" class="mb-3"
-      >Selecione fonte com dicionário para coletar com o usuário da sessão.</v-alert
+  <section class="collection-panel" aria-label="Parâmetros da coleta">
+    <div class="section-heading">
+      <span class="step-number">02</span>
+      <div>
+        <h3>Parâmetros da coleta</h3>
+        <p>
+          Defina a competência e os filtros de {{ connector.agency }} — {{ connector.product }}.
+        </p>
+      </div>
+    </div>
+    <v-alert
+      v-if="error"
+      type="error"
+      variant="tonal"
+      density="compact"
+      class="mb-4"
+      role="alert"
+      >{{ error }}</v-alert
     >
+    <div v-if="!ready && !result && !busy" class="readiness-note">
+      <v-icon icon="mdi-information-outline" size="17" />
+      <p>Selecione fonte com dicionário para coletar com o usuário da sessão.</p>
+    </div>
     <template v-if="selected">
-      <v-alert type="info" class="mb-3"
-        >{{ selected.limitations }} A URL da fonte deve corresponder ao órgão do conector.</v-alert
-      >
-      <v-select
-        v-if="product === 'IBGE_BIOMAS'"
-        v-model="competence"
-        :items="['2019', '2025']"
-        label="Edição"
-        :disabled="busy"
-      />
-      <v-text-field
-        v-else
-        v-model="competence"
-        :type="product === 'INPE_QUEIMADAS' ? 'date' : 'text'"
-        :label="
-          product === 'INPE_QUEIMADAS' ? 'Dia encerrado (AAAA-MM-DD)' : 'Ano publicado (AAAA)'
-        "
-        :disabled="busy"
-      />
-      <v-text-field
-        v-if="product === 'IBGE_MUNICIPIOS'"
-        v-model="municipality"
-        label="Código IBGE opcional (7 dígitos, iniciado por 41)"
-        :disabled="busy"
-      />
-      <template v-if="product === 'INPE_PRODES'">
+      <div class="collection-fields">
         <v-select
-          v-model="biome"
-          :items="['CERRADO', 'MATA_ATLANTICA']"
-          label="Bioma"
+          v-if="product === 'IBGE_BIOMAS'"
+          v-model="competence"
+          :items="['2019', '2025']"
+          label="Edição"
+          hint="Escolha a edição disponibilizada pelo serviço."
+          persistent-hint
+          variant="outlined"
+          density="compact"
           :disabled="busy"
         />
         <v-text-field
-          v-model="bbox"
-          label="Recorte opcional: oeste,sul,leste,norte"
+          v-else
+          v-model="competence"
+          :type="product === 'INPE_QUEIMADAS' ? 'date' : 'text'"
+          :label="
+            product === 'INPE_QUEIMADAS' ? 'Dia encerrado (AAAA-MM-DD)' : 'Ano publicado (AAAA)'
+          "
+          :hint="
+            product === 'INPE_QUEIMADAS'
+              ? 'Informe um dia já encerrado para consultar a coleta.'
+              : 'Informe o ano publicado pelo serviço oficial.'
+          "
+          persistent-hint
+          variant="outlined"
+          density="compact"
           :disabled="busy"
         />
-      </template>
+        <v-text-field
+          v-if="product === 'IBGE_MUNICIPIOS'"
+          v-model="municipality"
+          label="Município (opcional)"
+          hint="Código IBGE de 7 dígitos, iniciado por 41."
+          persistent-hint
+          variant="outlined"
+          density="compact"
+          :disabled="busy"
+        />
+        <template v-if="product === 'INPE_PRODES'">
+          <v-select
+            v-model="biome"
+            :items="biomeOptions"
+            label="Bioma"
+            variant="outlined"
+            density="compact"
+            :disabled="busy"
+            hide-details="auto"
+          />
+          <v-text-field
+            v-model="bbox"
+            label="Recorte geográfico (opcional)"
+            placeholder="Ex.: -54,-26,-50,-23"
+            hint="Ordem das coordenadas: oeste, sul, leste, norte."
+            persistent-hint
+            variant="outlined"
+            density="compact"
+            :disabled="busy"
+            class="bbox-field"
+          />
+        </template>
+      </div>
+      <details class="collection-details">
+        <summary>
+          <v-icon icon="mdi-information-outline" size="15" /><span
+            >Sobre este serviço e suas limitações</span
+          ><v-icon icon="mdi-chevron-down" class="details-chevron" size="15" />
+        </summary>
+        <p v-if="selected.limitations">{{ selected.limitations }}</p>
+        <p>
+          A URL da fonte deve corresponder ao órgão do conector. Os agendamentos são administrados
+          separadamente desta coleta sob demanda.
+        </p>
+      </details>
     </template>
-    <v-btn :disabled="!ready || !selected || !competence || busy" :loading="busy" @click="collect"
-      >Coletar e validar</v-btn
+    <div class="collection-submit">
+      <div class="execution-note">
+        <v-icon :icon="busy ? 'mdi-cloud-sync-outline' : 'mdi-play-circle-outline'" size="18" />
+        <p>
+          {{
+            busy
+              ? 'Coletando e validando os dados. Aguarde o resultado da API.'
+              : 'A coleta será iniciada agora, ao confirmar esta ação.'
+          }}
+        </p>
+      </div>
+      <v-btn
+        color="primary"
+        :disabled="!ready || !selected || !competence || busy"
+        :loading="busy"
+        prepend-icon="mdi-cloud-download-outline"
+        @click="collect"
+        >Coletar e validar</v-btn
+      >
+    </div>
+    <section
+      v-if="result"
+      class="collection-result"
+      aria-label="Resultado da coleta"
+      aria-live="polite"
     >
-    <template v-if="result">
-      <p class="mt-4">Arquivo: {{ result.file.name }}</p>
+      <div class="result-heading">
+        <span class="result-icon"><v-icon icon="mdi-file-check-outline" size="21" /></span>
+        <div>
+          <p class="context-label">RESULTADO DA COLETA</p>
+          <h4>{{ result.file.name }}</h4>
+        </div>
+      </div>
       <ValidationResult v-if="result.file.validation" :report="result.file.validation" />
-      <v-alert v-else type="warning"
+      <v-alert v-else type="warning" variant="tonal" density="compact"
         >Validação indisponível. Consulte o relatório antes de utilizar os dados.</v-alert
       >
-      <p>{{ result.collection.scope }} — {{ result.collection.competence }}</p>
-      <p v-for="limitation in result.collection.limitations" :key="limitation">{{ limitation }}</p>
-    </template>
-  </v-card>
+      <div class="result-metadata">
+        <span><v-icon icon="mdi-map-marker-outline" size="14" />{{ result.collection.scope }}</span
+        ><span v-if="result.collection.competence"
+          ><v-icon icon="mdi-calendar-outline" size="14" />{{ result.collection.competence }}</span
+        >
+      </div>
+      <p
+        v-for="limitation in result.collection.limitations"
+        :key="limitation"
+        class="result-limitation"
+      >
+        {{ limitation }}
+      </p>
+    </section>
+  </section>
 </template>
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
@@ -85,6 +174,10 @@ const props = defineProps<{
 const emit = defineEmits<{ collected: []; busy: [value: boolean] }>()
 const busy = ref(false),
   error = ref('')
+const biomeOptions = [
+  { title: 'Cerrado', value: 'CERRADO' },
+  { title: 'Mata Atlântica', value: 'MATA_ATLANTICA' },
+]
 const product = computed(() => props.connector.id)
 const competence = ref(''),
   municipality = ref(''),
@@ -163,3 +256,198 @@ async function collect() {
   }
 }
 </script>
+<style scoped>
+.collection-panel {
+  min-width: 0;
+  border: 1px solid var(--glass-outer-border);
+  border-radius: 18px;
+  background: rgba(var(--v-theme-surface), 0.45);
+  padding: 24px;
+}
+.section-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.step-number {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid rgba(var(--v-theme-primary), 0.2);
+  border-radius: 10px;
+  color: rgb(var(--v-theme-primary));
+  font-size: 11px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.section-heading h3 {
+  font-size: 14px;
+  font-weight: 600;
+}
+.section-heading p {
+  font-size: 11px;
+  color: rgba(var(--v-theme-on-surface), 0.55);
+  margin-top: 4px;
+  line-height: 1.6;
+}
+.readiness-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--glass-outer-border);
+  border-radius: 10px;
+  background: rgba(var(--v-theme-background), 0.2);
+  margin-bottom: 20px;
+  color: rgba(var(--v-theme-on-surface), 0.6);
+}
+.readiness-note :deep(.v-icon) {
+  color: rgb(var(--v-theme-primary));
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.readiness-note p {
+  font-size: 11px;
+  line-height: 1.6;
+}
+.collection-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px 16px;
+}
+.bbox-field {
+  grid-column: 1 / -1;
+}
+.collection-fields :deep(.v-messages) {
+  font-size: 10px;
+  line-height: 1.6;
+}
+.collection-details {
+  margin: 20px 0;
+  border-top: 1px solid var(--glass-outer-border);
+  border-bottom: 1px solid var(--glass-outer-border);
+}
+.collection-details > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  list-style: none;
+  font-size: 10px;
+  padding: 13px 0;
+  cursor: pointer;
+  color: rgba(var(--v-theme-on-surface), 0.6);
+}
+.collection-details > summary::-webkit-details-marker {
+  display: none;
+}
+.collection-details > summary > span {
+  flex: 1;
+}
+.collection-details[open] .details-chevron {
+  transform: rotate(180deg);
+}
+.collection-details > p {
+  font-size: 11px;
+  line-height: 1.7;
+  color: rgba(var(--v-theme-on-surface), 0.55);
+  margin-bottom: 12px;
+}
+.collection-submit {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.execution-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: rgba(var(--v-theme-on-surface), 0.5);
+  flex: 1;
+  min-width: 160px;
+}
+.execution-note :deep(.v-icon) {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.execution-note p {
+  font-size: 10px;
+  line-height: 1.6;
+}
+.collection-submit > :deep(.v-btn) {
+  text-transform: none;
+  letter-spacing: 0;
+  border-radius: 10px;
+  font-size: 12px;
+}
+.collection-result {
+  border-top: 1px solid var(--glass-outer-border);
+  margin-top: 24px;
+  padding-top: 24px;
+}
+.result-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.result-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  background: rgba(var(--v-theme-on-surface), 0.04);
+  color: rgba(var(--v-theme-on-surface), 0.65);
+  flex-shrink: 0;
+}
+.context-label {
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: rgba(var(--v-theme-on-surface), 0.45);
+  margin-bottom: 4px;
+}
+.result-heading h4 {
+  font-size: 13px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.result-metadata {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+.result-metadata > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  color: rgba(var(--v-theme-on-surface), 0.65);
+}
+.result-limitation {
+  font-size: 10px;
+  color: rgba(var(--v-theme-on-surface), 0.5);
+  line-height: 1.7;
+  margin-top: 8px;
+}
+@media (max-width: 1100px) {
+  .collection-panel {
+    padding: 20px;
+  }
+}
+@media (max-width: 650px) {
+  .collection-panel {
+    padding: 16px;
+  }
+  .collection-fields {
+    grid-template-columns: 1fr;
+  }
+  .collection-submit > :deep(.v-btn) {
+    width: 100%;
+  }
+}
+</style>

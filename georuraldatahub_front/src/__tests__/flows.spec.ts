@@ -267,6 +267,11 @@ describe('ingestion by source and session', () => {
     expect(w.text()).toContain('Qual serviço você quer utilizar?')
     await button(w, 'Enviar meus arquivos').trigger('click')
     expect(w.findComponent({ name: 'FileUploadList' }).exists()).toBe(true)
+    expect(w.findComponent({ name: 'FileUploadList' }).props('allowedExtensions')).toEqual([
+      'csv',
+      'geojson',
+      'json',
+    ])
     expect(w.findComponent({ name: 'CollectionForm' }).exists()).toBe(false)
     expect(w.find('select[label="Responsável pela ingestão"]').exists()).toBe(false)
     expect(w.findComponent({ name: 'DatasetSelect' }).exists()).toBe(false)

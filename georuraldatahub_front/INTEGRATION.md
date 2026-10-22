@@ -12,7 +12,11 @@ Em 20/10/2026, a API local respondeu 200 em GET `/fontes/2/arquivos` e GET `/con
 
 A tela Nova ingestão pede a modalidade: manual ou automática. O responsável vem do contexto de sessão; não há seleção de responsável nem de conjunto nessa tela.
 
-- Manual: POST `/fontes/{sourceId}/arquivos`, multipart `file`, parâmetro userId do contexto. Somente CSV e GeoJSON. Cada arquivo gera uma ingestão própria.
+A modalidade automática apresenta o catálogo de serviços com ícones e seleção lateral, seguido da fonte, do dicionário mais recente consultado e dos parâmetros do conector. Os painéis acompanham o tema das bibliotecas e se reorganizam em telas menores. Disponibilidade e limitações ficam em detalhes expansíveis; resultado e relatório de validação têm uma área própria. A troca de serviço, fonte e modalidade continua bloqueada durante a coleta. Essa organização não altera os contratos nem inicia a coleta ao selecionar um serviço.
+
+A modalidade manual segue o mesmo tema, com seleção de arquivos em destaque e fonte, dicionário e revisão do envio no painel ao lado. A seleção mostra formato e tamanho de cada arquivo; remover um item apenas o retira dessa seleção local. A confirmação identifica a fonte e a quantidade de arquivos. O progresso reutiliza o estado do envio existente, e os resultados do último envio aparecem por arquivo, preservando o relatório e as mensagens da API. Em telas menores, os painéis ficam empilhados. O envio continua multipart, sem conjunto ou escolha de versão do dicionário.
+
+- Manual: POST `/fontes/{sourceId}/arquivos`, multipart `file`, parâmetro userId do contexto. CSV e GeoJSON com extensão `.geojson` ou `.json`, ambas encaminhadas ao mesmo validador GeoJSON do backend. A extensão permitida não implica conteúdo aprovado. Cada arquivo gera uma ingestão própria.
 - Automática: GET `/fontes/conectores` e POST `/fontes/{sourceId}/coletas` com product, userId, competence e filtros compatíveis. O frontend omite datasetId. Os quatro produtos homologados no contrato são IBGE_MUNICIPIOS, IBGE_BIOMAS, INPE_PRODES e INPE_QUEIMADAS, com escopo Paraná. Agendamento continua no backend.
 - A fonte é preenchida se houver uma única URL compatível com o órgão. Múltiplas opções exigem escolha; nenhuma bloqueia a coleta. O catálogo não fornece vínculo produto–sourceId; não são criados IDs ou fontes ocultas.
 - O backend seleciona a maior versão do dicionário da fonte. Dicionários utilizados não podem ser editados/excluídos. Não há operação de publicação de dicionário presumida pelo frontend.
