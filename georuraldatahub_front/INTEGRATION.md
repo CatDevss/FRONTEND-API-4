@@ -20,9 +20,13 @@ A tela Nova ingestão pede a modalidade: manual ou automática. O responsável v
 
 A lista Arquivos por fonte usa GET `/fontes` e GET `/fontes/{sourceId}/arquivos`, incluindo arquivos sem conjunto. GET `/arquivos/{id}/validacao` consulta o relatório; GET `/arquivos/{id}/coleta` consulta proveniência, quando se trata de coleta automática. A listagem não contém o relatório completo. Datas receivedDate de LocalDateTime são mostradas sem presumir offset de origem.
 
+A biblioteca usa uma única busca local por nome, fonte, formato ou SHA-256, sem diferenciar maiúsculas ou acentos. O resumo conta apenas arquivos, fontes e volume efetivamente carregados; falhas parciais das fontes continuam visíveis com as mensagens da API. Os diálogos identificam o arquivo consultado e oferecem nova tentativa em caso de erro. A listagem não presume aprovação nem dispara consultas de validação para preencher indicadores.
+
 ## Conjuntos após a ingestão
 
 A tela Conjuntos usa o relacionamento existente em conjunto_arquivo. Um arquivo pode participar de vários conjuntos. O Operador cria um conjunto e adiciona arquivos já recebidos de fontes diferentes.
+
+A tela usa uma única busca local por nome ou número do conjunto, com lista e detalhes lado a lado. Os totais de arquivos/fontes se referem somente ao conjunto cuja estrutura foi carregada. Filtrar a lista não altera o conjunto selecionado. A associação é feita em um diálogo que consulta as fontes somente quando aberto; leitores não dependem desse catálogo para consultar os conjuntos. A criação exige um único envio do formulário e usa o ID do contexto atual; renomeação, exclusão de conjuntos vazios e remoção de vínculos mantêm seus contratos e bloqueios.
 
 - GET/POST `/conjuntos`; PUT `/conjuntos/{id}` envia somente name; POST envia name e userId da sessão.
 - GET `/conjuntos/{id}/estrutura` agrupa fontes → arquivos → referências de visualização, incluindo dictionaryId, dictionaryVersion e ingestionId.
@@ -37,7 +41,9 @@ Associação não equivale a validação, tratamento ou aprovação. Arquivos se
 
 `src/access/session.ts` centraliza permissões, navegação e o contexto do usuário. O módulo de login, mantido separadamente, deve chamar `setSessionUser(user)` com `{id,name,userType,userStatus}` ao estabelecer o contexto, e `setSessionUser(null)` ao encerrá-lo. O ID deve vir do cadastro real. `allowedNavigation()` fornece as páginas disponíveis. Não há usuário ou cargo padrão; valores inválidos/inativos são recusados. O contexto é apenas em memória.
 
-A implementação não autentica, não verifica senhas, não cria tokens e não persiste credenciais. A LoginView não foi substituída por autenticação simulada. Sem contexto, rotas protegidas levam à página Acesso indisponível. Em desenvolvimento (`import.meta.env.DEV`), há um painel explicitamente marcado como prévia que usa cadastros ativos de GET `/usuarios` para testar os cargos. Esse painel não aparece em builds de produção.
+A implementação não autentica, não verifica senhas, não cria tokens e não persiste credenciais. A LoginView não foi substituída por autenticação simulada. Sem contexto, rotas protegidas levam à página Acesso indisponível. Em desenvolvimento (`import.meta.env.DEV`), há um painel de prévia que usa cadastros ativos de GET `/usuarios` para testar os cargos. Esse painel não aparece em builds de produção.
+
+A prévia guarda somente o ID escolhido no `sessionStorage` da aba. Ao recarregar, consulta novamente os cadastros e restaura o cargo atual da API antes de verificar o acesso à rota. Usuários removidos, inativos ou com cargo inválido não são restaurados. Falhas temporárias oferecem nova tentativa sem apagar a preferência; Sair ou limpar o seletor remove a preferência. Navegar, alternar as abas do workspace ou selecionar novamente o mesmo cadastro não recria a sessão. A troca de cadastro mantém a página atual quando ela é permitida para o novo cargo. Essa persistência se limita à prévia de desenvolvimento; o login de produção continua sendo uma integração separada.
 
 | Cargo | Funcionalidades disponíveis neste escopo |
 | --- | --- |
@@ -57,11 +63,27 @@ Execute `npm ci`, `npm run build`, `npm run test:unit -- --run` e `npx eslint .`
 
 Permanecem pendentes a integração com o login real, autorização no servidor, revisão visual em navegador conectado e gravações ponta a ponta em homologação Oracle/OCI. As verificações reais descritas acima são de leitura e preflight; testes simulados não homologam persistência, triggers ou serviços oficiais.
 
+## Gestão de fontes e dicionários
+
+A lista de fontes tem busca por nome/URL e atalhos para `/dictionaries?source={id}`. Após cadastrar uma fonte, a interface oferece configurar seu dicionário. O atalho da ingestão também mantém a fonte em contexto.
+
+A tela de dicionários usa um painel com fonte e versões à esquerda e consulta/edição à direita. As versões são ordenadas da mais recente para a mais antiga, e a maior versão é selecionada ao carregar a fonte. Os campos são editados em linhas compactas com tipos descritos em português, obrigatoriedade, unicidade e domínio. Chaves locais das linhas não fazem parte do DTO enviado à API.
+
+Rascunhos podem ser editados ou excluídos com confirmação; versões utilizadas são somente leitura e oferecem criação de nova versão. Criar uma versão já persiste a cópia no backend e pode torná-la a maior versão disponível para ingestão, mesmo com status RASCUNHO. Não há etapa de homologação de dicionário inventada pelo frontend.
+
+A interface confirma o descarte de alterações ao trocar fonte, versão ou página. Erros de gravação mantêm os campos preenchidos e mostram a mensagem da API. Um conflito atualiza o status da versão e bloqueia a edição caso ela tenha sido utilizada. Respostas atrasadas de outra fonte são descartadas.
+
+Verificação em 22/10/2026: testes de restauração da prévia após recarregamento, navegação, indisponibilidade temporária, logout e cargo atual da API; testes da criação, edição, exclusão, versionamento, conflitos e descarte de alterações com componentes Vuetify reais em DOM simulado. A API local estava indisponível e não havia navegador conectado nesta revisão; gravações reais e inspeção visual permanecem pendentes.
+
 As responsabilidades adicionais descritas na matriz do usuário — administração de usuários/permissões, configurações técnicas, aprovação/publicação de versões, quarentena, revalidação, tratamento, indicadores e históricos completos — não foram simuladas com endpoints inexistentes. Devem ser integradas quando seus contratos estiverem disponíveis. A API de fontes desta versão só oferece cadastro e consulta; não foram inventadas operações de edição/exclusão.
 
 ## Workspace geográfico
 
 A página `/home` usa o tema Vuetify existente com um explorador compacto inspirado no VS Code: conjunto → fonte → arquivo → camada, abas Mapa e Medidores e uma barra de estado. Arquivos sem referência continuam no explorador. Fontes e arquivos podem ser recolhidos sem perder a seleção do conjunto.
+
+O mapa ocupa o fundo completo da área de visualização. Explorador, abas, ações, mensagens e resumo ficam em painéis flutuantes arredondados com superfícies do tema; só os painéis interativos capturam eventos, permitindo navegar no mapa nas áreas livres. O explorador pode ser ocultado sem desmontar a árvore nem o Leaflet. Em áreas estreitas, ele passa para a parte inferior. Erros da árvore e das camadas continuam acessíveis quando o explorador está oculto.
+
+Os controles de ruas/satélite e zoom ficam no canto inferior direito. Controles e popups usam o tema da aplicação, e as cores das geometrias continuam distintas. O enquadramento das camadas e a ação Ver Paraná consideram as dimensões dos painéis, atualizadas por ResizeObserver, com limite de preenchimento para manter uma área útil em telas pequenas. A alteração visual não troca os serviços de mapas de fundo nem altera os contratos da API.
 
 `src/stores/workspace.ts` mantém no Pinia o conjunto selecionado, a aba ativa, visibilidade e opacidade por conjunto. Essas preferências sobrevivem à saída/retorno à página durante a sessão; não são persistidas no navegador. A troca de usuário limpa o workspace. Instâncias Leaflet, cache de geometria e controladores de requisição ficam fora do Pinia.
 

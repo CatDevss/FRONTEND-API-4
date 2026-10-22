@@ -8,7 +8,7 @@ const user = ref<SessionUser | null>(null)
 
 // Integration boundary for the login team. This module neither authenticates nor persists credentials.
 export function setSessionUser(value: IngestionUser | null) {
-  user.value =
+  const next =
     value &&
     Number.isInteger(value.id) &&
     value.id > 0 &&
@@ -21,6 +21,8 @@ export function setSessionUser(value: IngestionUser | null) {
           userType: value.userType as Role,
         }
       : null
+  // Re-selecting the same preview must not remount pages or cancel active work.
+  if (JSON.stringify(user.value) !== JSON.stringify(next)) user.value = next
 }
 export const sessionUser = readonly(user)
 export const currentUserId = computed(() => user.value?.id ?? null)

@@ -146,7 +146,8 @@
             >Solicite ao Gestor um dicionário para esta fonte antes de receber dados.</template
           >
           <div class="mt-2">
-            <v-btn to="/dictionaries" variant="text">Consultar dicionários</v-btn
+            <v-btn :to="{ path: '/dictionaries', query: { source: sourceId } }" variant="text"
+              >Consultar dicionários</v-btn
             ><v-btn variant="text" :disabled="locked" @click="loadDictionary"
               >Conferir novamente</v-btn
             >

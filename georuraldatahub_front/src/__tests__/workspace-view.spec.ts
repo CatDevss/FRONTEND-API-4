@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
-import { defineComponent } from 'vue'
+import { defineComponent, onMounted, onBeforeUnmount } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import axios from 'axios'
@@ -19,6 +19,16 @@ const Tabs = defineComponent({
   props: ['modelValue'],
   emits: ['update:modelValue'],
   template: '<div><slot /></div>',
+})
+const mapCalls = { mount: vi.fn(), unmount: vi.fn(), fit: vi.fn(), reset: vi.fn() }
+const MapSurface = defineComponent({
+  props: ['visible', 'insets'],
+  setup(_, { expose }) {
+    onMounted(mapCalls.mount)
+    onBeforeUnmount(mapCalls.unmount)
+    expose({ fitVisibleLayers: mapCalls.fit, resetView: mapCalls.reset })
+  },
+  template: '<div class="test-map" />',
 })
 const Checkbox = defineComponent({
   props: ['modelValue', 'disabled'],
@@ -95,7 +105,7 @@ async function setup(options: { empty?: boolean; noLayers?: boolean } = {}) {
         VSlider: true,
         VCheckboxBtn: Checkbox,
         VSpacer: true,
-        WorkspaceMap: true,
+        WorkspaceMap: MapSurface,
         WorkspaceFilesDialog: true,
         ConfirmDialog: true,
       },
@@ -154,5 +164,110 @@ describe('workspace explorer and tabs', () => {
     const { wrapper } = await setup()
     expect(wrapper.findAll('button').some((b) => b.text() === 'Adicionar arquivos')).toBe(false)
     expect(wrapper.text()).not.toContain('Remover vínculo')
+  })
+  it('hides and restores the explorer without losing layers or remounting the map', async () => {
+    const { wrapper, workspace } = await setup()
+    await wrapper.find('input[type="checkbox"]').setValue(true)
+    workspace.setOpacity(11, 0.55)
+    const map = wrapper.findComponent(MapSurface).element
+    const calls = vi.mocked(axios.get).mock.calls.length
+    await wrapper
+      .find('.workspace-toolbar button[aria-label="Ocultar explorador"]')
+      .trigger('click')
+    expect(wrapper.find('#workspace-explorer').attributes('style')).toContain('display: none')
+    expect(wrapper.findComponent(MapSurface).element).toBe(map)
+    await wrapper
+      .find('.workspace-toolbar button[aria-label="Mostrar explorador"]')
+      .trigger('click')
+    expect(wrapper.find('input[type="checkbox"]').element).toHaveProperty('checked', true)
+    expect(workspace.selectedDatasetId).toBe(1)
+    expect(workspace.getOpacity(11)).toBe(0.55)
+    expect(mapCalls.mount).toHaveBeenCalledOnce()
+    expect(mapCalls.unmount).not.toHaveBeenCalled()
+    expect(axios.get).toHaveBeenCalledTimes(calls)
+  })
+  it('keeps the map instance and layer preferences when switching tabs', async () => {
+    const { wrapper, workspace } = await setup()
+    workspace.setVisibility(11, true)
+    const map = wrapper.findComponent(MapSurface).element
+    wrapper.findComponent(Tabs).vm.$emit('update:modelValue', 'meters')
+    await flushPromises()
+    expect(wrapper.findComponent(MapSurface).props('visible')).toBe(false)
+    wrapper.findComponent(Tabs).vm.$emit('update:modelValue', 'map')
+    await flushPromises()
+    expect(wrapper.findComponent(MapSurface).element).toBe(map)
+    expect(wrapper.findComponent(MapSurface).props('visible')).toBe(true)
+    expect(workspace.visibleLayerIds).toEqual([11])
+    expect(mapCalls.mount).toHaveBeenCalledOnce()
+  })
+  it('keeps layer and API errors visible when their explorer panel is hidden', async () => {
+    const { wrapper, workspace } = await setup()
+    workspace.runtime[11] = { loading: false, featureCount: null, error: 'Geometria indisponível.' }
+    workspace.structureError = 'Estrutura indisponível.'
+    await wrapper
+      .find('.workspace-toolbar button[aria-label="Ocultar explorador"]')
+      .trigger('click')
+    expect(wrapper.find('.workspace-messages').text()).toContain('Geometria indisponível.')
+    expect(wrapper.find('.workspace-messages').text()).toContain('Estrutura indisponível.')
+  })
+  it('keeps the fitting, Paraná and membership actions connected to the floating controls', async () => {
+    const { wrapper, workspace } = await setup()
+    const fit = wrapper.findAll('button').find((b) => b.text() === 'Enquadrar camadas')!
+    expect(fit.attributes('disabled')).toBeDefined()
+    workspace.setVisibility(11, true)
+    await flushPromises()
+    await fit.trigger('click')
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Ver Paraná')!
+      .trigger('click')
+    expect(mapCalls.fit).toHaveBeenCalledOnce()
+    expect(mapCalls.reset).toHaveBeenCalledOnce()
+    await wrapper.find('button[aria-label="Adicionar arquivos"]').trigger('click')
+    expect(wrapper.findComponent({ name: 'WorkspaceFilesDialog' }).props('modelValue')).toBe(true)
+  })
+  it('updates fitting insets for side panels, bottom panels and a hidden explorer', async () => {
+    const { wrapper } = await setup()
+    const rect = (left: number, top: number, width: number, height: number) =>
+      ({ left, top, width, height, right: left + width, bottom: top + height }) as DOMRect
+    vi.spyOn(wrapper.find('.workspace').element, 'getBoundingClientRect').mockReturnValue(
+      rect(0, 0, 1000, 800),
+    )
+    vi.spyOn(wrapper.find('.workspace-toolbar').element, 'getBoundingClientRect').mockReturnValue(
+      rect(16, 16, 968, 60),
+    )
+    vi.spyOn(wrapper.find('.workspace-footer').element, 'getBoundingClientRect').mockReturnValue(
+      rect(16, 680, 800, 80),
+    )
+    const explorerRect = vi
+      .spyOn(wrapper.find('#workspace-explorer').element, 'getBoundingClientRect')
+      .mockReturnValue(rect(16, 90, 300, 580))
+    window.dispatchEvent(new Event('resize'))
+    await flushPromises()
+    expect(wrapper.findComponent(MapSurface).props('insets')).toEqual({
+      top: 76,
+      right: 64,
+      left: 316,
+      bottom: 120,
+    })
+    explorerRect.mockReturnValue(rect(12, 450, 976, 250))
+    window.dispatchEvent(new Event('resize'))
+    await flushPromises()
+    expect(wrapper.findComponent(MapSurface).props('insets')).toEqual({
+      top: 76,
+      right: 64,
+      left: 0,
+      bottom: 350,
+    })
+    await wrapper
+      .find('.workspace-toolbar button[aria-label="Ocultar explorador"]')
+      .trigger('click')
+    await flushPromises()
+    expect(wrapper.findComponent(MapSurface).props('insets')).toEqual({
+      top: 76,
+      right: 64,
+      left: 0,
+      bottom: 120,
+    })
   })
 })

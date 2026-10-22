@@ -108,7 +108,7 @@ describe('contract dependent flows', () => {
   it('sends dataset userId rather than a sourceId', async () => {
     vi.mocked(axios.post).mockResolvedValue({ data: {} })
     const wrapper = mount(DataSetDialog, { props: { userId: 1, modelValue: true }, global })
-    // Form submission is confirmed through the existing dialog component.
+    // The creation form sends the current session identity with the name.
     const vm = wrapper.vm as unknown as { dataSet: { name: string }; save: () => Promise<void> }
     vm.dataSet.name = 'Novo conjunto'
     await vm.save()
@@ -383,9 +383,14 @@ describe('dataset membership', () => {
   it('associates existing files without upload, refreshes structure, and removes only the link', async () => {
     const w = setup()
     await flushPromises()
-    w.findAllComponents(Select)[0]!.vm.$emit('update:modelValue', 7)
+    await w.find('button[data-dataset-id="7"]').trigger('click')
     await flushPromises()
-    w.findAllComponents(Select)[1]!.vm.$emit('update:modelValue', 2)
+    await w
+      .findAll('button')
+      .find((b) => b.text() === 'Adicionar arquivos')!
+      .trigger('click')
+    await flushPromises()
+    w.findComponent(Select).vm.$emit('update:modelValue', 2)
     await flushPromises()
     await w
       .findAll('button')
@@ -408,7 +413,7 @@ describe('dataset membership', () => {
     setSessionUser({ id: 8, name: 'Auditor', userType: 'AUDITOR', userStatus: 1 })
     const w = setup()
     await flushPromises()
-    w.findAllComponents(Select)[0]!.vm.$emit('update:modelValue', 7)
+    await w.find('button[data-dataset-id="7"]').trigger('click')
     await flushPromises()
     expect(w.findAll('button').some((b) => b.text() === 'Novo conjunto')).toBe(false)
     const vm = w.vm as unknown as { membership: (file: number, add: boolean) => Promise<void> }

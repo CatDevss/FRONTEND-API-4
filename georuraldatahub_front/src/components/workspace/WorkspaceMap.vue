@@ -5,7 +5,8 @@
     <v-alert
       v-if="notice"
       type="info"
-      variant="flat"
+      variant="tonal"
+      color="primary"
       density="compact"
       class="map-notice"
       closable
@@ -23,7 +24,10 @@ import { apiError } from '@/services/contracts'
 import { useWorkspaceStore } from '@/stores/workspace'
 import 'leaflet/dist/leaflet.css'
 
-const props = defineProps<{ visible: boolean }>()
+const props = defineProps<{
+  visible: boolean
+  insets?: { top: number; right: number; bottom: number; left: number }
+}>()
 const workspace = useWorkspaceStore(),
   element = ref<HTMLElement | null>(null),
   cursor = ref(''),
@@ -75,7 +79,7 @@ function clear() {
   cursor.value = ''
   notice.value = ''
   map?.closePopup()
-  map?.fitBounds(parana)
+  resetView()
 }
 async function loadLayer(id: number) {
   if (!map || requests.has(id) || cache.has(id)) return
@@ -146,12 +150,36 @@ function fitVisibleLayers() {
   for (const [id, layer] of cache)
     if (workspace.isVisible(id) && layer.getBounds().isValid()) bounds.extend(layer.getBounds())
   if (bounds.isValid()) {
-    map?.fitBounds(bounds, { padding: [24, 24], maxZoom: 15 })
+    const padding = visiblePadding()
+    map?.fitBounds(bounds, { ...padding, maxZoom: 15 })
     notice.value = ''
   } else notice.value = 'Ative uma camada com geometrias para enquadrar sua extensão.'
 }
+function visiblePadding() {
+  let left = (props.insets?.left ?? 0) + 24,
+    top = (props.insets?.top ?? 0) + 24,
+    right = (props.insets?.right ?? 0) + 24,
+    bottom = (props.insets?.bottom ?? 0) + 24
+  const width = element.value?.clientWidth ?? 0,
+    height = element.value?.clientHeight ?? 0
+  // Keep a usable viewport even on small screens or when the overlays wrap.
+  if (width > 0 && left + right > width - 96) {
+    const ratio = Math.max(0, width - 96) / (left + right)
+    left *= ratio
+    right *= ratio
+  }
+  if (height > 0 && top + bottom > height - 96) {
+    const ratio = Math.max(0, height - 96) / (top + bottom)
+    top *= ratio
+    bottom *= ratio
+  }
+  return {
+    paddingTopLeft: [left, top] as L.PointTuple,
+    paddingBottomRight: [right, bottom] as L.PointTuple,
+  }
+}
 function resetView() {
-  map?.fitBounds(parana)
+  map?.fitBounds(parana, visiblePadding())
 }
 function resize() {
   map?.invalidateSize()
@@ -177,7 +205,7 @@ watch(
 )
 onMounted(() => {
   if (!element.value) return
-  map = L.map(element.value, { preferCanvas: true }).fitBounds(parana)
+  map = L.map(element.value, { preferCanvas: true, zoomControl: false }).fitBounds(parana)
   const streets = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; OpenStreetMap contributors',
     maxZoom: 19,
@@ -188,8 +216,9 @@ onMounted(() => {
   )
   streets.addTo(map)
   L.control
-    .layers({ Ruas: streets, Satélite: satellite }, undefined, { position: 'topright' })
+    .layers({ Ruas: streets, Satélite: satellite }, undefined, { position: 'bottomright' })
     .addTo(map)
+  L.control.zoom({ position: 'bottomright' }).addTo(map)
   L.control.scale({ imperial: false }).addTo(map)
   map.on('mousemove', (event: L.LeafletMouseEvent) => {
     cursor.value = `${event.latlng.lat.toFixed(5)}, ${event.latlng.lng.toFixed(5)}`
@@ -229,16 +258,95 @@ defineExpose({ fitVisibleLayers, resetView })
 }
 .map-cursor {
   position: absolute;
-  bottom: 28px;
-  left: 12px;
+  bottom: 5px;
+  left: 130px;
   z-index: 1000;
   font-variant-numeric: tabular-nums;
+  font-size: 10px;
+  background: rgba(var(--v-theme-surface), 0.96);
+  border: 1px solid var(--glass-outer-border);
 }
 .map-notice {
   position: absolute;
-  bottom: 60px;
-  left: 12px;
-  right: 12px;
+  bottom: 160px;
+  right: 16px;
+  max-width: min(380px, calc(100% - 32px));
   z-index: 1000;
+  border-radius: 16px;
+  background: rgba(var(--v-theme-surface), 0.97);
+}
+.map-shell :deep(.leaflet-right) {
+  right: 6px;
+}
+.map-shell :deep(.leaflet-bar),
+.map-shell :deep(.leaflet-control-layers) {
+  background: rgba(var(--v-theme-surface), 0.97);
+  color: rgb(var(--v-theme-on-surface));
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.12);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+}
+.map-shell :deep(.leaflet-bar a) {
+  background: transparent;
+  color: rgb(var(--v-theme-on-surface));
+  border-color: var(--glass-outer-border);
+  width: 34px;
+  height: 34px;
+  line-height: 34px;
+}
+.map-shell :deep(.leaflet-bar a:hover),
+.map-shell :deep(.leaflet-bar a:focus-visible) {
+  background: rgba(var(--v-theme-primary), 0.12);
+  color: rgb(var(--v-theme-primary));
+}
+.map-shell :deep(.leaflet-bar a.leaflet-disabled) {
+  color: rgba(var(--v-theme-on-surface), 0.3);
+}
+.map-shell :deep(.leaflet-control-layers-toggle) {
+  width: 36px;
+  height: 36px;
+  filter: invert(0.85);
+}
+.map-shell :deep(.leaflet-control-layers-expanded) {
+  padding: 10px 14px;
+}
+.map-shell :deep(.leaflet-control-layers label) {
+  line-height: 2;
+  font-family: inherit;
+  accent-color: rgb(var(--v-theme-primary));
+}
+.map-shell :deep(.leaflet-control-attribution) {
+  background: rgba(var(--v-theme-surface), 0.9);
+  color: rgba(var(--v-theme-on-surface), 0.65);
+  border-radius: 6px 0 0 0;
+  font-size: 9px;
+}
+.map-shell :deep(.leaflet-control-attribution a) {
+  color: rgb(var(--v-theme-primary));
+}
+.map-shell :deep(.leaflet-control-scale-line) {
+  background: rgba(var(--v-theme-surface), 0.9);
+  color: rgba(var(--v-theme-on-surface), 0.8);
+  border-color: rgba(var(--v-theme-on-surface), 0.4);
+  text-shadow: none;
+  border-radius: 4px;
+}
+.map-shell :deep(.leaflet-popup-content-wrapper),
+.map-shell :deep(.leaflet-popup-tip) {
+  background: rgb(var(--v-theme-surface));
+  color: rgb(var(--v-theme-on-surface));
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
+}
+.map-shell :deep(.leaflet-popup-content-wrapper) {
+  border: 1px solid var(--glass-outer-border);
+  border-radius: 16px;
+}
+.map-shell :deep(.leaflet-popup-content) {
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.map-shell :deep(.leaflet-popup-close-button) {
+  color: rgba(var(--v-theme-on-surface), 0.65);
 }
 </style>

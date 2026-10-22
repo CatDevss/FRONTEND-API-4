@@ -1,54 +1,62 @@
 <template>
   <v-alert type="info" variant="tonal" :class="compact ? 'session-preview-compact' : 'mb-4'">
-    <strong>Prévia de permissões — desenvolvimento</strong>
+    <strong>Prévia de cargo · desenvolvimento</strong>
     <p v-if="!compact">
       O login será integrado separadamente. Selecione um cadastro para testar a interface por cargo.
       Isto não autentica o usuário.
     </p>
     <v-select
       :model-value="sessionUser?.id"
-      :items="users"
+      :items="previewUsers"
       item-title="label"
       item-value="id"
-      label="Cadastro para prévia"
+      label="Usuário e cargo de teste"
       :density="compact ? 'compact' : undefined"
       :hide-details="compact"
-      :loading="loading"
-      :disabled="isUploadInProgress || isCollectionInProgress"
+      :loading="previewLoading"
+      :disabled="previewLoading || isUploadInProgress || isCollectionInProgress"
       clearable
       @update:model-value="select"
     />
-    <p v-if="error">{{ error }}</p>
+    <v-btn v-if="previewError" variant="text" :loading="previewLoading" @click="retry"
+      >Tentar novamente</v-btn
+    >
+    <p v-if="previewError" role="alert">{{ previewError }}</p>
+    <span v-else class="text-caption">Cargo mantido ao navegar e recarregar esta aba.</span>
   </v-alert>
 </template>
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
-import axios from 'axios'
-import { apiError, type IngestionUser } from '@/services/contracts'
-import { sessionUser, setSessionUser, allowedNavigation } from '@/access/session'
+import { onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { sessionUser, allowedNavigation, can } from '@/access/session'
+import {
+  previewUsers,
+  previewLoading,
+  previewError,
+  loadPreviewUsers,
+  selectPreviewUser,
+} from '@/access/developmentSession'
 import { isUploadInProgress, isCollectionInProgress } from '@/composables/uploadLock'
 defineProps<{ compact?: boolean }>()
-const users = ref<(IngestionUser & { label: string })[]>([]),
-  loading = ref(false),
-  error = ref('')
 const router = useRouter()
-onMounted(async () => {
-  loading.value = true
-  try {
-    users.value = (await axios.get<IngestionUser[]>('/usuarios')).data
-      .filter((u) => u.userStatus === 1)
-      .map((u) => ({ ...u, label: `${u.name} — ${u.userType}` }))
-  } catch (e) {
-    error.value = apiError(e)
-  } finally {
-    loading.value = false
-  }
-})
+const route = useRoute()
+onMounted(() => loadPreviewUsers())
+function openAvailablePage() {
+  if (
+    route.name === 'login' ||
+    route.name === 'access-required' ||
+    (route.meta.permission && !can(route.meta.permission))
+  )
+    void router.replace(allowedNavigation()[0]?.to ?? '/access-required')
+}
+async function retry() {
+  await loadPreviewUsers(true)
+  if (sessionUser.value) openAvailablePage()
+}
 function select(id: number | null) {
-  if (isUploadInProgress.value || isCollectionInProgress.value) return
-  setSessionUser(users.value.find((u) => u.id === id) ?? null)
-  void router.replace(allowedNavigation()[0]?.to ?? '/access-required')
+  if (previewLoading.value || isUploadInProgress.value || isCollectionInProgress.value) return
+  selectPreviewUser(id)
+  openAvailablePage()
 }
 </script>
 
