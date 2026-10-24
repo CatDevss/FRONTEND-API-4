@@ -14,7 +14,7 @@ export interface LayerRuntime {
   error: string
   featureCount: number | null
 }
-export const layerColors = ['#FE5000', '#42A5F5', '#66BB6A', '#FFCA28', '#AB47BC', '#26C6DA']
+export const layerColors = ['#FE5000', '#85B3C5', '#9DB79A', '#D2B477', '#B9A7CF', '#7DBDB3']
 export const useWorkspaceStore = defineStore('workspace', () => {
   const selectedDatasetId = ref<number | null>(null)
   const activeTab = ref<'map' | 'meters'>('map')

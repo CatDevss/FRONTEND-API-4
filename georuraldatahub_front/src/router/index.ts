@@ -54,5 +54,11 @@ export function checkRouteAccess(permission?: Permission) {
   return !permission || can(permission) ? true : { name: 'access-required' }
 }
 const router = createRouter({ history: createWebHistory(import.meta.env.BASE_URL), routes })
-router.beforeEach((to) => checkRouteAccess(to.meta.permission))
+router.beforeEach(async (to) => {
+  if (import.meta.env.DEV) {
+    const { restoreDevelopmentSession } = await import('@/access/developmentSession')
+    await restoreDevelopmentSession()
+  }
+  return checkRouteAccess(to.meta.permission)
+})
 export default router

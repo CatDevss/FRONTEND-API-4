@@ -8,16 +8,25 @@
           workspace.datasets.length
         }}</span>
       </div>
-      <v-btn
-        icon="mdi-refresh"
-        size="x-small"
-        variant="text"
-        aria-label="Atualizar conjuntos"
-        title="Atualizar conjuntos"
-        :loading="workspace.loadingDatasets"
-        :disabled="workspace.membershipBusy || workspace.loadingDatasets"
-        @click="refreshAll"
-      />
+      <div class="explorer-heading-actions">
+        <v-btn
+          icon="mdi-refresh"
+          size="x-small"
+          variant="text"
+          aria-label="Atualizar conjuntos"
+          title="Atualizar conjuntos"
+          :loading="workspace.loadingDatasets"
+          :disabled="workspace.membershipBusy || workspace.loadingDatasets"
+          @click="refreshAll"
+        /><v-btn
+          icon="mdi-close"
+          size="x-small"
+          variant="text"
+          aria-label="Ocultar explorador"
+          title="Ocultar explorador"
+          @click="$emit('close')"
+        />
+      </div>
     </div>
     <v-alert
       v-if="workspace.datasetsError"
@@ -231,7 +240,7 @@ import { can } from '@/access/session'
 import { useWorkspaceStore } from '@/stores/workspace'
 const workspace = useWorkspaceStore(),
   rootOpen = ref(true)
-defineEmits<{ removeFile: [file: { id: number; name: string; datasetId: number }] }>()
+defineEmits<{ close: []; removeFile: [file: { id: number; name: string; datasetId: number }] }>()
 watch(
   () => workspace.selectedDatasetId,
   () => {
@@ -272,12 +281,16 @@ async function refreshAll() {
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  background: linear-gradient(
-    180deg,
-    rgba(var(--v-theme-surface), 0.96),
-    rgba(var(--v-theme-background), 0.9)
-  );
-  border-right: 1px solid var(--glass-outer-border);
+  background: rgba(var(--v-theme-surface), 0.96);
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.1);
+  border-radius: 18px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(16px);
+  overflow: hidden;
+}
+.explorer-heading-actions {
+  display: flex;
+  gap: 2px;
 }
 .explorer-heading {
   display: flex;
@@ -355,7 +368,7 @@ async function refreshAll() {
   color: rgba(var(--v-theme-on-surface), 0.78);
   text-align: left;
   padding: 4px 7px;
-  border-radius: 5px;
+  border-radius: 8px;
   font-size: 12px;
   line-height: 1.4;
   cursor: pointer;
@@ -398,16 +411,11 @@ summary.tree-row::-webkit-details-marker {
   min-height: 35px;
 }
 .dataset-icon {
-  color: rgb(var(--v-theme-secondary));
+  color: rgb(var(--v-theme-primary));
 }
 .dataset-row.selected {
   color: rgba(var(--v-theme-on-surface), 0.96);
-  background: linear-gradient(
-    90deg,
-    rgba(var(--v-theme-primary), 0.16),
-    rgba(var(--v-theme-primary), 0.035)
-  );
-  box-shadow: inset 2px 0 rgb(var(--v-theme-primary));
+  background: rgba(var(--v-theme-primary), 0.1);
 }
 .dataset-row.selected > .node-chevron {
   color: rgb(var(--v-theme-primary));
@@ -426,7 +434,7 @@ summary.tree-row::-webkit-details-marker {
   border-left: 1px solid var(--tree-line);
 }
 .source-icon {
-  color: #cfab7b;
+  color: rgba(var(--v-theme-on-surface), 0.6);
 }
 .source-row {
   font-weight: 500;
@@ -440,10 +448,10 @@ summary.tree-row::-webkit-details-marker {
   color: rgba(var(--v-theme-on-surface), 0.55);
 }
 .file-icon.spatial {
-  color: #87b5d2;
+  color: rgba(var(--v-theme-on-surface), 0.65);
 }
 .file-icon.tabular {
-  color: #8bbfa6;
+  color: rgba(var(--v-theme-on-surface), 0.65);
 }
 .file-label {
   font-size: 11.5px;

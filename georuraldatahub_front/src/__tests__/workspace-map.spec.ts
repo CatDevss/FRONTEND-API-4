@@ -49,6 +49,7 @@ const leaflet = vi.hoisted(() => {
   const control = Object.assign(vi.fn(), {
     layers: vi.fn(() => ({ addTo: vi.fn() })),
     scale: vi.fn(() => ({ addTo: vi.fn() })),
+    zoom: vi.fn(() => ({ addTo: vi.fn() })),
   })
   const lib = {
     map: vi.fn(() => map),
@@ -266,5 +267,40 @@ describe('Leaflet workspace lifecycle', () => {
     expect(leaflet.lib.geoJSON).not.toHaveBeenCalled()
     expect(workspace.selectedDatasetId).toBe(1)
     expect(workspace.isVisible(11)).toBe(true)
+  })
+  it('fits loaded layers and Paraná inside the space not covered by floating panels', async () => {
+    const { wrapper } = setup()
+    await flushPromises()
+    await wrapper.setProps({ insets: { left: 330, top: 76, right: 64, bottom: 120 } })
+    wrapper.vm.fitVisibleLayers()
+    expect(leaflet.map.fitBounds).toHaveBeenLastCalledWith(expect.anything(), {
+      paddingTopLeft: [354, 100],
+      paddingBottomRight: [88, 144],
+      maxZoom: 15,
+    })
+    wrapper.vm.resetView()
+    expect(leaflet.map.fitBounds).toHaveBeenLastCalledWith(expect.anything(), {
+      paddingTopLeft: [354, 100],
+      paddingBottomRight: [88, 144],
+    })
+    const element = wrapper.find('.map-canvas').element
+    Object.defineProperty(element, 'clientWidth', { value: 300 })
+    Object.defineProperty(element, 'clientHeight', { value: 250 })
+    wrapper.vm.fitVisibleLayers()
+    const options = leaflet.map.fitBounds.mock.lastCall?.[1]
+    expect(options.paddingTopLeft[0] + options.paddingBottomRight[0]).toBeCloseTo(204)
+    expect(options.paddingTopLeft[1] + options.paddingBottomRight[1]).toBeCloseTo(154)
+  })
+  it('keeps loaded geometries and avoids new requests after hiding and showing the map', async () => {
+    const { wrapper, workspace } = setup()
+    await flushPromises()
+    await wrapper.setProps({ visible: false })
+    await wrapper.setProps({ visible: true })
+    await flushPromises()
+    expect(leaflet.lib.map).toHaveBeenCalledOnce()
+    expect(axios.get).toHaveBeenCalledOnce()
+    expect(leaflet.attached.size).toBe(1)
+    expect(workspace.isVisible(11)).toBe(true)
+    expect(leaflet.map.invalidateSize).toHaveBeenCalled()
   })
 })
