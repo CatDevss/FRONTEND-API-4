@@ -104,6 +104,8 @@ const sources = ref<Source[]>([]),
 const search = ref(''),
   createdSource = ref<Source | null>(null)
 const sourceOrder = new Intl.Collator('pt-BR', { sensitivity: 'base', numeric: true })
+let pendingReload = false
+let inFlightLoad: Promise<void> | null = null
 const filteredSources = computed(() => {
   const query = (search.value || '').trim().toLocaleLowerCase('pt-BR')
   return sources.value.filter((s) =>
@@ -111,15 +113,30 @@ const filteredSources = computed(() => {
   )
 })
 async function load() {
-  if (loading.value) return
+  if (loading.value) {
+    pendingReload = true
+    while (loading.value && inFlightLoad) {
+      await inFlightLoad
+    }
+    return
+  }
   loading.value = true
-  error.value = ''
   try {
-    const { data } = await axios.get<Source[]>('/fontes')
-    sources.value = [...data].sort((a, b) => sourceOrder.compare(a.name, b.name) || a.id - b.id)
-  } catch (e) {
-    error.value = apiError(e)
+    do {
+      pendingReload = false
+      error.value = ''
+      inFlightLoad = axios
+        .get<Source[]>('/fontes')
+        .then(({ data }) => {
+          sources.value = [...data].sort((a, b) => sourceOrder.compare(a.name, b.name) || a.id - b.id)
+        })
+        .catch((e) => {
+          error.value = apiError(e)
+        })
+      await inFlightLoad
+    } while (pendingReload)
   } finally {
+    inFlightLoad = null
     loading.value = false
   }
 }
