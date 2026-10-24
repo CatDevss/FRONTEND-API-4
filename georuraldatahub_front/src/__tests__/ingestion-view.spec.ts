@@ -10,12 +10,13 @@ import NewLoad from '@/views/NewLoadView.vue'
 import CollectionForm from '@/components/CollectionForm.vue'
 import FileUploadList from '@/components/upload/FileUploadList.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import IngestionDictionarySelect from '@/components/IngestionDictionarySelect.vue'
 import { setSessionUser } from '@/access/session'
 import { isCollectionInProgress, isUploadInProgress, uploadResults } from '@/composables/uploadLock'
-import type { ValidationReport } from '@/services/contracts'
+import type { Dictionary, ValidationReport } from '@/services/contracts'
 
 vi.mock('axios', () => ({
-  default: { get: vi.fn(), post: vi.fn(), isAxiosError: () => true },
+  default: { get: vi.fn(), post: vi.fn(), isAxiosError: () => true, isCancel: () => false },
 }))
 const sources = [
   { id: 2, name: 'IBGE', url: 'https://www.ibge.gov.br/' },
@@ -33,6 +34,25 @@ const connectors = [
   limitations: 'Coleta restrita ao Paraná.',
 }))
 let cleanups: (() => void)[] = []
+function sourceDictionaries(sourceId: number): Dictionary[] {
+  return [
+    { id: sourceId === 2 ? 10 : 40, name: 'Regras históricas', version: 1, status: 'UTILIZADO' },
+    { id: sourceId === 2 ? 22 : 44, name: 'Regras atuais', version: 3, status: 'RASCUNHO' },
+  ].map((dictionary) => ({
+    ...dictionary,
+    sourceId,
+    description: null,
+    rules: [],
+    createdOn: '2026-10-20T12:00:00',
+  }))
+}
+function response(path: string) {
+  if (path === '/fontes') return { data: sources }
+  if (path === '/fontes/conectores') return { data: connectors }
+  if (/^\/fontes\/(2|4)\/dicionarios$/.test(path))
+    return { data: sourceDictionaries(Number(path.split('/')[2])) }
+  throw new Error(`Unexpected GET ${path}`)
+}
 beforeEach(() => {
   vi.resetAllMocks()
   vi.stubGlobal(
@@ -58,18 +78,7 @@ beforeEach(() => {
   }))
   setSessionUser({ id: 7, name: 'Operador', userType: 'OPERADOR', userStatus: 1 })
   uploadResults.value = []
-  vi.mocked(axios.get).mockImplementation(async (path) => {
-    if (path === '/fontes') return { data: sources }
-    if (path === '/fontes/conectores') return { data: connectors }
-    if (/^\/fontes\/(2|4)\/dicionarios$/.test(path))
-      return {
-        data: [
-          { id: 10, name: 'Regras anteriores', version: 1, status: 'UTILIZADO' },
-          { id: 22, name: 'Regras atuais', version: 3, status: 'RASCUNHO' },
-        ],
-      }
-    throw new Error(`Unexpected GET ${path}`)
-  })
+  vi.mocked(axios.get).mockImplementation(async (path) => response(path))
 })
 afterEach(async () => {
   for (const cleanup of cleanups) cleanup()
@@ -111,6 +120,38 @@ async function select(w: Wrapper, product: string) {
   await w.find(`button[data-product="${product}"]`).trigger('click')
   await flushPromises()
 }
+async function chooseDictionary(w: Wrapper, dictionaryId: number | 'latest' | null) {
+  w.findComponent(IngestionDictionarySelect)
+    .findComponent(components.VAutocomplete)
+    .vm.$emit('update:modelValue', dictionaryId)
+  await flushPromises()
+}
+async function prepareManual() {
+  const w = await setup('manual')
+  const input = w.find('input[type="file"]')
+  Object.defineProperty(input.element, 'files', { value: [new File(['id\n1'], 'dados.csv')] })
+  await input.trigger('change')
+  w.findComponent(components.VSelect).vm.$emit('update:modelValue', 2)
+  await flushPromises()
+  return w
+}
+const collectionResult = (dictionaryId: number, dictionaryVersion: number) => ({
+  status: 201,
+  data: {
+    file: {
+      name: 'municipios.geojson',
+      validation: {
+        status: 'PARCIAL',
+        dictionaryId,
+        dictionaryVersion,
+        validRecords: 1,
+        rejectedRecords: 1,
+        records: [],
+      },
+    },
+    collection: { scope: 'Paraná', competence: '2024', limitations: [] },
+  },
+})
 
 describe('automatic ingestion with Vuetify controls', () => {
   it('sends the configured source filters and displays partial validation before changing service', async () => {
@@ -258,5 +299,133 @@ describe('manual ingestion with Vuetify controls', () => {
     )
     expect(w.findComponent(FileUploadList).props('modelValue')).toEqual([json])
     expect(button(w, 'Trocar modalidade').attributes('disabled')).toBeUndefined()
+  })
+})
+
+describe('dictionary selection for ingestion', () => {
+  it('searches versions without accents and sends the chosen dictionary in the manual upload', async () => {
+    const w = await prepareManual()
+    const picker = w.findComponent(IngestionDictionarySelect)
+    const search = picker.findComponent(components.VAutocomplete).find('input[type="text"]')
+    const searchInput = search.element as HTMLInputElement
+    searchInput.focus()
+    await flushPromises()
+    await search.setValue('HISTORICAS')
+    await flushPromises()
+    const matches = picker.findAllComponents(components.VListItem)
+    expect(matches).toHaveLength(1)
+    expect(matches[0]!.text()).toContain('Regras históricas · v1 · #10')
+    await matches[0]!.trigger('click')
+    await flushPromises()
+    expect(picker.props('modelValue')).toBe(10)
+    expect(axios.post).not.toHaveBeenCalled()
+    vi.mocked(axios.post).mockResolvedValue({
+      status: 201,
+      data: collectionResult(10, 1).data.file,
+    })
+    await button(w, 'Enviar e validar arquivos').trigger('click')
+    const confirm = w.findComponent(ConfirmDialog)
+    expect(confirm.props('message')).toContain('Regras históricas · v1 · #10')
+    await confirm
+      .findAllComponents(components.VBtn)
+      .find((b) => b.text() === 'Confirmar')!
+      .trigger('click')
+    await flushPromises()
+    expect(vi.mocked(axios.post).mock.calls[0]?.[2]?.params).toEqual({
+      userId: 7,
+      dictionaryId: 10,
+    })
+    expect(w.find('.manual-results').text()).toContain('Dicionário 10, versão 1.')
+    expect(w.find('.manual-results').text()).toContain('PARCIAL')
+  })
+
+  it('sends the chosen dictionary in collection JSON and clearing restores automatic selection without losing filters', async () => {
+    const w = await setup()
+    await select(w, 'IBGE_MUNICIPIOS')
+    await chooseDictionary(w, 10)
+    await w.findComponent(CollectionForm).find('input[type="text"]').setValue('2024')
+    vi.mocked(axios.post).mockResolvedValue(collectionResult(10, 1))
+    await button(w, 'Coletar e validar').trigger('click')
+    await flushPromises()
+    expect(axios.post).toHaveBeenLastCalledWith('/fontes/2/coletas', {
+      product: 'IBGE_MUNICIPIOS',
+      competence: '2024',
+      userId: 7,
+      dictionaryId: 10,
+    })
+    expect(w.text()).toContain('Dicionário 10, versão 1.')
+    await chooseDictionary(w, null)
+    expect(w.findComponent(IngestionDictionarySelect).props('modelValue')).toBeNull()
+    expect(w.find('.collection-result').exists()).toBe(false)
+    expect(
+      (w.findComponent(CollectionForm).find('input[type="text"]').element as HTMLInputElement)
+        .value,
+    ).toBe('2024')
+    vi.mocked(axios.post).mockResolvedValue(collectionResult(22, 3))
+    await button(w, 'Coletar e validar').trigger('click')
+    await flushPromises()
+    expect(axios.post).toHaveBeenLastCalledWith('/fontes/2/coletas', {
+      product: 'IBGE_MUNICIPIOS',
+      competence: '2024',
+      userId: 7,
+    })
+    expect(w.text()).toContain('Dicionário 22, versão 3.')
+  })
+
+  it('clears selection on source change and discards late versions and dictionaries belonging to another source', async () => {
+    const w = await prepareManual()
+    await chooseDictionary(w, 10)
+    let resolve!: (value: { data: Dictionary[] }) => void
+    vi.mocked(axios.get).mockImplementation(async (path) => {
+      if (path === '/fontes/4/dicionarios')
+        return new Promise<{ data: Dictionary[] }>((resolveRequest) => (resolve = resolveRequest))
+      if (path === '/fontes/2/dicionarios')
+        return { data: [...sourceDictionaries(2), ...sourceDictionaries(4)] }
+      return response(path)
+    })
+    w.findComponent(components.VSelect).vm.$emit('update:modelValue', 4)
+    await flushPromises()
+    expect(w.findComponent(IngestionDictionarySelect).props('modelValue')).toBeNull()
+    expect(w.findComponent(IngestionDictionarySelect).props('loading')).toBe(true)
+    expect(button(w, 'Enviar e validar arquivos').attributes('disabled')).toBeDefined()
+    w.findComponent(components.VSelect).vm.$emit('update:modelValue', 2)
+    await flushPromises()
+    resolve({ data: sourceDictionaries(4) })
+    await flushPromises()
+    expect(w.findComponent(IngestionDictionarySelect).props('dictionaries')).toEqual(
+      [...sourceDictionaries(2)].reverse(),
+    )
+    expect(w.findComponent(IngestionDictionarySelect).props('modelValue')).toBeNull()
+    expect(button(w, 'Enviar e validar arquivos').attributes('disabled')).toBeUndefined()
+    expect(axios.post).not.toHaveBeenCalled()
+  })
+
+  it('shows dictionary API errors and blocks a disappeared selected version until the user chooses another mode', async () => {
+    const w = await prepareManual()
+    await chooseDictionary(w, 10)
+    vi.mocked(axios.get).mockRejectedValueOnce({
+      response: { data: 'Falha ao consultar versões.' },
+    })
+    await button(w, 'Conferir novamente').trigger('click')
+    await flushPromises()
+    expect(w.text()).toContain('Falha ao consultar versões.')
+    expect(
+      w
+        .findComponent(IngestionDictionarySelect)
+        .findComponent(components.VAutocomplete)
+        .props('disabled'),
+    ).toBe(true)
+    expect(button(w, 'Enviar e validar arquivos').attributes('disabled')).toBeDefined()
+    vi.mocked(axios.get).mockResolvedValueOnce({
+      data: sourceDictionaries(2).filter((d) => d.id !== 10),
+    })
+    await button(w, 'Conferir novamente').trigger('click')
+    await flushPromises()
+    expect(w.text()).toContain('A versão selecionada não está mais disponível.')
+    expect(w.findComponent(IngestionDictionarySelect).props('modelValue')).toBe(10)
+    expect(button(w, 'Enviar e validar arquivos').attributes('disabled')).toBeDefined()
+    await chooseDictionary(w, 'latest')
+    expect(button(w, 'Enviar e validar arquivos').attributes('disabled')).toBeUndefined()
+    expect(axios.post).not.toHaveBeenCalled()
   })
 })

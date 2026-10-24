@@ -68,6 +68,38 @@ describe('upload and validation', () => {
       'Dicionário já utilizado',
     )
   })
+  it('sends the chosen dictionary as a query parameter for every file in the batch', async () => {
+    vi.mocked(axios.post).mockResolvedValue({
+      status: 201,
+      data: { validation: { ...report('PARCIAL'), dictionaryId: 77, dictionaryVersion: 1 } },
+    })
+    await startUpload(2, [new File(['a'], 'a.csv'), new File(['b'], 'b.json')], 1, 77)
+    expect(axios.post).toHaveBeenCalledTimes(2)
+    for (const [, payload, config] of vi.mocked(axios.post).mock.calls) {
+      expect(payload).toBeInstanceOf(FormData)
+      expect(config?.params).toEqual({ userId: 1, dictionaryId: 77 })
+    }
+    expect(uploadResults.value.every((result) => result.validation?.dictionaryId === 77)).toBe(true)
+    expect(uploadResults.value.every((result) => !result.success)).toBe(true)
+  })
+  it.each([undefined, null])('omits dictionaryId in automatic mode (%s)', async (dictionaryId) => {
+    vi.mocked(axios.post).mockResolvedValue({ status: 201, data: { validation: report('VALIDO') } })
+    await startUpload(2, [new File(['a'], 'a.csv')], 1, dictionaryId)
+    expect(vi.mocked(axios.post).mock.calls[0]?.[2]?.params).toEqual({ userId: 1 })
+  })
+  it('preserves an API rejection of a dictionary from another source', async () => {
+    vi.mocked(axios.post).mockRejectedValue({
+      response: {
+        status: 422,
+        data: { detail: 'O dicionário selecionado não pertence à fonte informada.' },
+      },
+    })
+    await startUpload(2, [new File(['a'], 'a.csv')], 1, 77)
+    expect(uploadResults.value[0]?.message).toBe(
+      'O dicionário selecionado não pertence à fonte informada.',
+    )
+    expect(uploadResults.value[0]?.success).toBe(false)
+  })
   it.each(['VALIDO', 'PARCIAL', 'REJEITADO'] as const)(
     'sends a .json file unchanged and respects backend status %s',
     async (status) => {

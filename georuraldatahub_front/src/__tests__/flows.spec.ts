@@ -59,6 +59,8 @@ const global = {
       ].map((name) => [name, Container]),
     ),
     VSelect: Select,
+    VAutocomplete: true,
+    VListItem: Container,
     VBtn: Button,
     ValidationResult: true,
     ConfirmDialog: true,

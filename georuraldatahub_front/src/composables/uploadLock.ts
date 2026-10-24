@@ -43,12 +43,18 @@ export function cancelUpload() {
   controller?.abort()
 }
 
-export async function startUpload(sourceId: number, files: File[], userId: number) {
+export async function startUpload(
+  sourceId: number,
+  files: File[],
+  userId: number,
+  dictionaryId?: number | null,
+) {
   if (
     isUploadInProgress.value ||
     files.length === 0 ||
     !can('ingestion.run') ||
-    currentUserId.value !== userId
+    currentUserId.value !== userId ||
+    (dictionaryId != null && (!Number.isInteger(dictionaryId) || dictionaryId <= 0))
   )
     return
 
@@ -74,7 +80,7 @@ export async function startUpload(sourceId: number, files: File[], userId: numbe
 
     try {
       const { data } = await axios.post<IngestedFile>(`/fontes/${sourceId}/arquivos`, formData, {
-        params: { userId },
+        params: { userId, ...(dictionaryId != null ? { dictionaryId } : {}) },
         signal: controller.signal,
         onUploadProgress: (event) => {
           if (event.total) {

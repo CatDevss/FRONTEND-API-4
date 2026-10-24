@@ -170,6 +170,7 @@ const props = defineProps<{
   sourceUrl: string
   userId: number | null
   ready: boolean
+  dictionaryId?: number | null
 }>()
 const emit = defineEmits<{ collected: []; busy: [value: boolean] }>()
 const busy = ref(false),
@@ -194,7 +195,7 @@ watch(product, () => {
   error.value = ''
 })
 watch(
-  () => [props.sourceId, props.userId],
+  () => [props.sourceId, props.userId, props.dictionaryId],
   () => {
     result.value = null
     error.value = ''
@@ -214,10 +215,18 @@ async function collect() {
     return
   error.value = ''
   result.value = null
+  if (
+    props.dictionaryId != null &&
+    (!Number.isInteger(props.dictionaryId) || props.dictionaryId <= 0)
+  ) {
+    error.value = 'Selecione um dicionário válido.'
+    return
+  }
   const body: Record<string, unknown> = {
     product: product.value,
     competence: competence.value.trim(),
     userId: props.userId,
+    ...(props.dictionaryId != null ? { dictionaryId: props.dictionaryId } : {}),
   }
   if (product.value === 'IBGE_MUNICIPIOS' && municipality.value.trim()) {
     if (!/^41\d{5}$/.test(municipality.value.trim())) {

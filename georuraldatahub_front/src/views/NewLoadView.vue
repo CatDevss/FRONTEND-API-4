@@ -146,7 +146,7 @@
                 <span class="step-number">01</span>
                 <div>
                   <h3>Fonte de origem</h3>
-                  <p>A origem define o dicionário usado na validação.</p>
+                  <p>A origem define os dicionários disponíveis para validação.</p>
                 </div>
               </div>
               <p v-if="compatibleSources.length === 1" class="source-resolution" role="status">
@@ -198,29 +198,15 @@
                 role="alert"
                 >{{ dictionaryError }}</v-alert
               >
-              <div
-                v-if="sourceId && !loadingDictionary"
-                class="dictionary-context"
-                :class="{ 'dictionary-context--missing': !latestDictionary }"
-              >
-                <span class="dictionary-icon"
-                  ><v-icon icon="mdi-book-open-outline" size="20"
-                /></span>
-                <div class="dictionary-info">
-                  <span class="context-label">DICIONÁRIO DA FONTE</span
-                  ><strong>{{ latestDictionary?.name || 'Dicionário não disponível' }}</strong>
-                  <p>
-                    {{
-                      latestDictionary
-                        ? 'O backend selecionará a versão mais recente no momento da ingestão.'
-                        : 'Solicite ao Gestor um dicionário para esta fonte antes de receber dados.'
-                    }}
-                  </p>
-                </div>
-                <span v-if="latestDictionary" class="version-badge"
-                  >v{{ latestDictionary.version }}</span
-                >
-              </div>
+              <IngestionDictionarySelect
+                v-if="sourceId"
+                :key="sourceId"
+                v-model="dictionaryId"
+                :dictionaries="dictionaries"
+                :loading="loadingDictionary"
+                :error="dictionaryError"
+                :disabled="locked || loading"
+              />
               <div v-if="sourceId" class="dictionary-actions">
                 <v-btn
                   :to="{ path: '/dictionaries', query: { source: sourceId } }"
@@ -248,6 +234,7 @@
               :source-id="sourceId"
               :source-url="selectedSource?.url || ''"
               :user-id="userId"
+              :dictionary-id="dictionaryId"
               :ready="collectionReady"
               @busy="collectionBusy = $event"
               @collected="loadDictionary"
@@ -315,7 +302,7 @@
               <span class="step-number">02</span>
               <div>
                 <h2>Fonte de origem</h2>
-                <p>A origem define o dicionário usado na validação.</p>
+                <p>A origem define os dicionários disponíveis para validação.</p>
               </div>
             </div>
             <v-select
@@ -353,27 +340,15 @@
               role="alert"
               >{{ dictionaryError }}</v-alert
             >
-            <div
-              v-if="sourceId && !loadingDictionary && !dictionaryError"
-              class="dictionary-context"
-              :class="{ 'dictionary-context--missing': !latestDictionary }"
-            >
-              <span class="dictionary-icon"><v-icon icon="mdi-book-open-outline" size="20" /></span>
-              <div class="dictionary-info">
-                <span class="context-label">DICIONÁRIO DA FONTE</span>
-                <strong>{{ latestDictionary?.name || 'Dicionário não disponível' }}</strong>
-                <p>
-                  {{
-                    latestDictionary
-                      ? 'O backend selecionará a versão mais recente no momento da ingestão.'
-                      : 'Solicite ao Gestor um dicionário para esta fonte antes de receber dados.'
-                  }}
-                </p>
-              </div>
-              <span v-if="latestDictionary" class="version-badge"
-                >v{{ latestDictionary.version }}</span
-              >
-            </div>
+            <IngestionDictionarySelect
+              v-if="sourceId"
+              :key="sourceId"
+              v-model="dictionaryId"
+              :dictionaries="dictionaries"
+              :loading="loadingDictionary"
+              :error="dictionaryError"
+              :disabled="locked || loading"
+            />
             <div v-if="sourceId" class="dictionary-actions">
               <v-btn
                 :to="{ path: '/dictionaries', query: { source: sourceId } }"
@@ -415,6 +390,10 @@
                   {{ uploadedFiles.length }}
                   {{ uploadedFiles.length === 1 ? 'arquivo' : 'arquivos' }}
                 </dd>
+              </div>
+              <div>
+                <dt>Dicionário</dt>
+                <dd>{{ dictionarySelectionSummary }}</dd>
               </div>
             </dl>
             <div v-if="isUploadInProgress" class="manual-progress" role="status" aria-live="polite">
@@ -491,7 +470,7 @@
     <ConfirmDialog
       v-model="showConfirm"
       title="Enviar e validar arquivos"
-      :message="`Enviar ${uploadedFiles.length} arquivo(s) para a fonte ${selectedSource?.name || 'selecionada'} com o usuário da sessão? Apenas os registros aprovados ficarão disponíveis para tratamento e visualização.`"
+      :message="`Enviar ${uploadedFiles.length} arquivo(s) para a fonte ${selectedSource?.name || 'selecionada'} com o usuário da sessão? Dicionário: ${dictionarySelectionSummary}. Apenas os registros aprovados ficarão disponíveis para tratamento e visualização.`"
       @confirm="submitManual"
     />
   </div>
@@ -502,6 +481,7 @@ import axios from 'axios'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import FileUploadList from '@/components/upload/FileUploadList.vue'
 import CollectionForm from '@/components/CollectionForm.vue'
+import IngestionDictionarySelect from '@/components/IngestionDictionarySelect.vue'
 import ValidationResult from '@/components/ValidationResult.vue'
 import {
   apiError,
@@ -544,7 +524,20 @@ const product = ref<string | null>(null),
 const showConfirm = ref(false)
 const collectionBusy = ref(false),
   loadingDictionary = ref(false)
-const latestDictionary = ref<Dictionary | null>(null)
+const dictionaries = ref<Dictionary[]>([])
+const dictionaryId = ref<number | null>(null)
+const selectedDictionary = computed(() =>
+  dictionaryId.value === null
+    ? dictionaries.value[0]
+    : dictionaries.value.find((dictionary) => dictionary.id === dictionaryId.value),
+)
+const dictionarySelectionSummary = computed(() =>
+  dictionaryId.value === null
+    ? 'Automático · versão mais recente'
+    : selectedDictionary.value
+      ? `${selectedDictionary.value.name} · v${selectedDictionary.value.version} · #${selectedDictionary.value.id}`
+      : 'Dicionário indisponível',
+)
 const locked = computed(() => isUploadInProgress.value || collectionBusy.value)
 const automaticConnectors = computed(() =>
   catalog.value.filter((c) => c.access === 'AUTOMATICO' && supportedProducts.includes(c.id)),
@@ -564,7 +557,7 @@ const baseReady = computed(
     !!selectedSource.value &&
     can('ingestion.run') &&
     !!userId.value &&
-    !!latestDictionary.value &&
+    selectedDictionary.value?.sourceId === sourceId.value &&
     !loadingDictionary.value &&
     !loading.value,
 )
@@ -611,6 +604,7 @@ function changeMode() {
 }
 function selectProduct(id: string) {
   if (locked.value || !automaticConnectors.value.some((c) => c.id === id)) return
+  if (product.value === id) return
   product.value = id
   sourceId.value = null
   resolveSource()
@@ -622,27 +616,37 @@ function resolveSource() {
 let dictionaryEpoch = 0
 async function loadDictionary() {
   const epoch = ++dictionaryEpoch
-  latestDictionary.value = null
+  dictionaries.value = []
   dictionaryError.value = ''
-  if (!sourceId.value) {
+  const requestedSourceId = sourceId.value
+  if (!requestedSourceId) {
     loadingDictionary.value = false
     return
   }
   loadingDictionary.value = true
   try {
-    const { data } = await axios.get<Dictionary[]>(`/fontes/${sourceId.value}/dicionarios`)
+    const { data } = await axios.get<Dictionary[]>(`/fontes/${requestedSourceId}/dicionarios`)
     if (epoch === dictionaryEpoch)
-      latestDictionary.value = data.sort((a, b) => b.version - a.version)[0] ?? null
+      dictionaries.value = data
+        .filter((dictionary) => dictionary.sourceId === requestedSourceId)
+        .sort((a, b) => b.version - a.version)
   } catch (e) {
     if (epoch === dictionaryEpoch) dictionaryError.value = apiError(e)
   } finally {
     if (epoch === dictionaryEpoch) loadingDictionary.value = false
   }
 }
-watch(sourceId, loadDictionary)
+watch(
+  sourceId,
+  () => {
+    dictionaryId.value = null
+    void loadDictionary()
+  },
+  { flush: 'sync' },
+)
 async function submitManual() {
   if (!manualReady.value || locked.value || !sourceId.value || !userId.value) return
-  await startUpload(sourceId.value, [...uploadedFiles.value], userId.value)
+  await startUpload(sourceId.value, [...uploadedFiles.value], userId.value, dictionaryId.value)
   await loadDictionary()
 }
 onMounted(loadResources)
@@ -848,8 +852,7 @@ onMounted(loadResources)
   gap: 12px;
   flex-wrap: wrap;
 }
-.scope-badge,
-.version-badge {
+.scope-badge {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -916,44 +919,10 @@ onMounted(loadResources)
   color: rgba(var(--v-theme-on-surface), 0.5);
   margin-top: 10px;
 }
-.dictionary-context {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  border: 1px solid var(--glass-outer-border);
-  border-radius: 12px;
-  padding: 16px;
-  margin-top: 20px;
-  background: rgba(var(--v-theme-background), 0.2);
-}
 .dictionary-icon {
   width: 34px;
   height: 34px;
   border-radius: 10px;
-}
-.dictionary-info {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-  flex: 1;
-}
-.context-label {
-  font-size: 9px;
-  letter-spacing: 0.1em;
-  color: rgba(var(--v-theme-on-surface), 0.45);
-}
-.dictionary-info strong {
-  font-size: 12px;
-  font-weight: 500;
-  overflow-wrap: anywhere;
-}
-.dictionary-info p {
-  font-size: 10px;
-  line-height: 1.6;
-  color: rgba(var(--v-theme-on-surface), 0.55);
-}
-.dictionary-context--missing {
-  border-color: rgba(var(--v-theme-warning), 0.25);
 }
 .dictionary-actions {
   display: flex;
@@ -1191,16 +1160,6 @@ onMounted(loadResources)
   .manual-review,
   .manual-result {
     padding: 16px;
-  }
-  .dictionary-context {
-    padding: 12px;
-    gap: 8px;
-  }
-  .dictionary-info p {
-    font-size: 10px;
-  }
-  .version-badge {
-    padding: 4px 6px;
   }
   .collection-empty {
     padding: 24px;
