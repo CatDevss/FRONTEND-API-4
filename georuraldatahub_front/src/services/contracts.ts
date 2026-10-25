@@ -4,6 +4,10 @@ export interface Source {
   id: number
   name: string
   url: string
+  description: string | null
+  status: number
+  dateCreation?: string
+  userId: number
 }
 export interface FieldRule {
   name: string
