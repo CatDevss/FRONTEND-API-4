@@ -14,6 +14,16 @@ afterEach(() => setSessionUser(null))
 const assume = (userType: Role) =>
   setSessionUser({ id: 17, name: 'Usuário de teste', userType, userStatus: 1 })
 describe('role permissions and login integration boundary', () => {
+  it.each(roles)(
+    '%s can consult quarantine, while only OPERADOR prepares corrections in the UI',
+    (role) => {
+      assume(role)
+      expect(can('quarantine.read')).toBe(true)
+      expect(can('quarantine.manage')).toBe(role === 'OPERADOR')
+      expect(allowedNavigation().some((entry) => entry.to === '/quarantine')).toBe(true)
+      expect(checkRouteAccess('quarantine.read')).toBe(true)
+    },
+  )
   it.each(roles)('%s can only execute ingestion when it is OPERADOR', (role) => {
     assume(role)
     expect(can('ingestion.run')).toBe(role === 'OPERADOR')

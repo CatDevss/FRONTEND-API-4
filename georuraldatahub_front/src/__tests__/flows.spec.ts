@@ -30,7 +30,12 @@ const Button = defineComponent({
 })
 const Container = defineComponent({
   template: '<div><slot /><slot name="prepend" /><slot name="append" /></div>',
-  methods: { resetValidation() {} },
+  methods: {
+    resetValidation() {},
+    async validate() {
+      return { valid: true }
+    },
+  },
 })
 const global = {
   stubs: {
@@ -174,6 +179,7 @@ describe('contract dependent flows', () => {
     expect(axios.post).toHaveBeenCalledWith('/fontes', {
       name: source.name,
       url: source.url,
+      description: null,
       userId: 8,
     })
     expect(wrapper.emitted('saved')?.[0]).toEqual([source])

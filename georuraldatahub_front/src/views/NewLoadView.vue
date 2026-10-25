@@ -452,7 +452,11 @@
               <h3>{{ result.name }}</h3>
               <span v-if="!result.validation" class="scope-badge">Sem relatório</span>
             </div>
-            <ValidationResult v-if="result.validation" :report="result.validation" />
+            <ValidationResult
+              v-if="result.validation"
+              :report="result.validation"
+              :file-id="result.fileId"
+            />
             <v-alert
               v-else
               type="warning"

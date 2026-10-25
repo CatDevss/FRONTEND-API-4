@@ -37,7 +37,9 @@ export const permissionRoles = {
   'datasets.read': ['GESTOR', 'OPERADOR', 'ANALISTA', 'AUDITOR'],
   'datasets.manage': ['OPERADOR'],
   'map.read': ['GESTOR', 'OPERADOR', 'ANALISTA', 'AUDITOR'],
-  'ingestion.run': ['OPERADOR']
+  'ingestion.run': ['OPERADOR'],
+  'quarantine.read': readers,
+  'quarantine.manage': ['OPERADOR'],
 } as const satisfies Record<string, readonly Role[]>
 export type Permission = keyof typeof permissionRoles
 export function roleCan(role: Role | undefined, permission: Permission): boolean {
@@ -59,6 +61,12 @@ export const navigation = [
     icon: 'mdi-file-check-outline',
     to: '/file-uploads',
     permission: 'files.read',
+  },
+  {
+    title: 'Quarentena',
+    icon: 'mdi-shield-alert-outline',
+    to: '/quarantine',
+    permission: 'quarantine.read',
   },
   { title: 'Conjuntos', icon: 'mdi-folder-outline', to: '/datasets', permission: 'datasets.read' },
   { title: 'Fontes', icon: 'mdi-database-outline', to: '/sources', permission: 'sources.read' },
