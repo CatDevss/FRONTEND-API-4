@@ -55,7 +55,7 @@ export const navigation = [
     permission: 'ingestion.run',
   },
   {
-    title: 'Arquivos por fonte',
+    title: 'Arquivos',
     icon: 'mdi-file-check-outline',
     to: '/file-uploads',
     permission: 'files.read',

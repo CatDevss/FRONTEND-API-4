@@ -160,6 +160,12 @@ const menuItems = computed(allowedNavigation)
   overflow: hidden;
 }
 
+/* Aplica margem e espaçamento nas bordas apenas para as outras views (que não são a home) */
+.v-container:not(.workspace-container) {
+  padding: 32px !important; 
+  max-width: 1400px; 
+}
+
 .custom-drawer {
   background-color: #080605 !important;
 }
