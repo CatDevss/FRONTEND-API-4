@@ -31,12 +31,13 @@ export const permissionRoles = {
   'files.read': readers,
   'sources.read': readers,
   'sources.create': ['GESTOR'],
+  'sources.update': ['GESTOR', 'OPERADOR', 'ANALISTA'],
   'dictionaries.read': ['GESTOR', 'OPERADOR', 'ANALISTA', 'AUDITOR'],
   'dictionaries.manage': ['GESTOR'],
   'datasets.read': ['GESTOR', 'OPERADOR', 'ANALISTA', 'AUDITOR'],
   'datasets.manage': ['OPERADOR'],
   'map.read': ['GESTOR', 'OPERADOR', 'ANALISTA', 'AUDITOR'],
-  'ingestion.run': ['OPERADOR'],
+  'ingestion.run': ['OPERADOR']
 } as const satisfies Record<string, readonly Role[]>
 export type Permission = keyof typeof permissionRoles
 export function roleCan(role: Role | undefined, permission: Permission): boolean {
