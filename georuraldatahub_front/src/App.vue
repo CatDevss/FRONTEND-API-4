@@ -91,40 +91,20 @@
       </v-container>
     </v-main>
 
-    <!-- Barra de progresso do envio, visível em qualquer tela -->
-    <div v-if="isUploadInProgress" class="upload-bar">
-      <div class="upload-bar-info">
-        <span class="text-body-2">
-          Enviando "{{ currentFileName }}" — {{ completedFiles }} de {{ totalFiles }}
-        </span>
-        <v-btn size="small" variant="text" color="error" @click="cancelUpload">Cancelar</v-btn>
-      </div>
-      <v-progress-linear :model-value="overallProgress" color="primary" height="6" />
-    </div>
-
-    <v-snackbar v-model="uploadSnackbarVisible" :timeout="4000">
-      {{ uploadSnackbarMessage }}
-    </v-snackbar>
+    <IngestionProgressPopup />
   </v-app>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import DevelopmentSession from '@/components/DevelopmentSession.vue'
+import IngestionProgressPopup from '@/components/IngestionProgressPopup.vue'
+import { clearIngestionProgress } from '@/composables/ingestionProgress'
 import { selectPreviewUser } from '@/access/developmentSession'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useRoute, useRouter } from 'vue-router'
 import { allowedNavigation, sessionUser, setSessionUser, can } from '@/access/session'
-import {
-  isUploadInProgress,
-  currentFileName,
-  completedFiles,
-  totalFiles,
-  overallProgress,
-  cancelUpload,
-  uploadSnackbarVisible,
-  uploadSnackbarMessage,
-} from '@/composables/uploadLock'
+import { cancelUpload } from '@/composables/uploadLock'
 
 function logout() {
   if (import.meta.env.DEV) selectPreviewUser(null)
@@ -138,6 +118,7 @@ watch(
   () => sessionUser.value,
   () => {
     cancelUpload()
+    clearIngestionProgress()
     workspace.reset()
     if (route.meta.permission && !can(route.meta.permission))
       void router.replace(allowedNavigation()[0]?.to ?? '/access-required')
@@ -162,8 +143,8 @@ const menuItems = computed(allowedNavigation)
 
 /* Aplica margem e espaçamento nas bordas apenas para as outras views (que não são a home) */
 .v-container:not(.workspace-container) {
-  padding: 32px !important; 
-  max-width: 1400px; 
+  padding: 32px !important;
+  max-width: 1400px;
 }
 
 .custom-drawer {
@@ -189,25 +170,5 @@ const menuItems = computed(allowedNavigation)
   font-size: 14px;
   font-weight: 600;
   white-space: nowrap;
-}
-
-.upload-bar {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  z-index: 3000;
-  background: rgba(15, 11, 10, 0.8);
-  -webkit-backdrop-filter: blur(20px) saturate(140%);
-  backdrop-filter: blur(20px) saturate(140%);
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  color: white;
-  padding: 8px 16px 0;
-}
-
-.upload-bar-info {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
 }
 </style>

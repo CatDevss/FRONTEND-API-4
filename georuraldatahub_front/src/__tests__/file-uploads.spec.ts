@@ -139,7 +139,9 @@ describe('file library with one unified search', () => {
   it('keeps provenance fields readable without implying a validation result', async () => {
     const wrapper = await setup()
     expect(rows(wrapper)[0]!.text()).toContain('2 KB')
-    expect(rows(wrapper)[0]!.text()).toContain('22/10/2026 às 09:30')
+    expect(rows(wrapper)[0]!.text()).toContain('22/10/2026')
+    expect(rows(wrapper)[0]!.text()).toContain('09:30:00')
+    expect(rows(wrapper)[0]!.find('time').attributes('datetime')).toBe('2026-10-22T09:30:00')
     expect(rows(wrapper)[0]!.find('.hash').attributes('title')).toBe('abc001')
     expect(rows(wrapper)[0]!.text()).not.toContain('VALIDO')
     expect(wrapper.find('.library-footer').text()).toContain('não indica aprovação')

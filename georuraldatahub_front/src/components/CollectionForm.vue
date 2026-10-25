@@ -158,11 +158,17 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import axios from 'axios'
-import { isCollectionInProgress } from '@/composables/uploadLock'
+import { isCollectionInProgress, isUploadInProgress } from '@/composables/uploadLock'
+import {
+  beginIngestionProgress,
+  updateIngestionProgress,
+  finishIngestionProgress,
+} from '@/composables/ingestionProgress'
 import { can, currentUserId } from '@/access/session'
 import ValidationResult from '@/components/ValidationResult.vue'
 import {
   apiError,
+  validationMessage,
   sourceSupportsProduct,
   type Connector,
   type IngestedFile,
@@ -172,6 +178,7 @@ const props = defineProps<{
   connector: Connector
   sourceId: number | null
   sourceUrl: string
+  sourceName?: string
   userId: number | null
   ready: boolean
   dictionaryId?: number | null
@@ -214,6 +221,7 @@ async function collect() {
     !props.userId ||
     busy.value ||
     isCollectionInProgress.value ||
+    isUploadInProgress.value ||
     !sourceSupportsProduct(props.sourceUrl, product.value)
   )
     return
@@ -257,11 +265,39 @@ async function collect() {
   busy.value = true
   isCollectionInProgress.value = true
   emit('busy', true)
+  const actor = props.userId,
+    requestedSource = props.sourceId,
+    requestedProduct = product.value
+  const progressId = beginIngestionProgress({
+    kind: 'automatic',
+    title: `${props.connector.agency} · ${props.connector.product}`,
+    source: `${props.sourceName || `Fonte #${requestedSource}`} · ${competence.value.trim()}`,
+    fileCount: 1,
+  })
   try {
-    result.value = (await axios.post(`/fontes/${props.sourceId}/coletas`, body)).data
+    const { data } = await axios.post<{ file: IngestedFile; collection: CollectionMetadata }>(
+      `/fontes/${requestedSource}/coletas`,
+      body,
+    )
+    if (currentUserId.value !== actor) return
+    updateIngestionProgress(progressId, { completedCount: 1, fileName: data.file.name })
+    finishIngestionProgress(
+      progressId,
+      data.file.validation?.status === 'VALIDO' ? 'completed' : 'attention',
+      validationMessage(data.file.validation),
+      data.file.validation && ['REJEITADO', 'PARCIAL'].includes(data.file.validation.status)
+        ? (data.file.id ?? null)
+        : null,
+    )
+    if (props.sourceId !== requestedSource || product.value !== requestedProduct) return
+    result.value = data
     emit('collected')
   } catch (e) {
-    error.value = apiError(e)
+    if (currentUserId.value !== actor) return
+    const message = apiError(e)
+    finishIngestionProgress(progressId, 'error', message)
+    if (props.sourceId === requestedSource && product.value === requestedProduct)
+      error.value = message
   } finally {
     busy.value = false
     isCollectionInProgress.value = false
