@@ -3,7 +3,7 @@
     <header class="files-heading">
       <div>
         <p class="eyebrow">BIBLIOTECA DE DADOS</p>
-        <h1 class="text-h5 font-weight-bold">Arquivos por fonte</h1>
+        <h1 class="text-h5 font-weight-bold">Arquivos</h1>
         <p class="text-body-2 text-medium-emphasis mt-1">
           Explore os arquivos recebidos, inclusive os ainda sem conjunto, e consulte sua validação e
           origem.
@@ -50,6 +50,48 @@
       </div>
     </div>
 
+    <section class="stage-section" aria-label="Arquivos por etapa no bucket">
+      <div class="stage-heading">
+        <h2>Etapas no bucket</h2>
+        <p>
+          Etapa atual de cada arquivo, conforme a versão mais recente guardada. Clique em uma etapa
+          para filtrar a lista.
+        </p>
+      </div>
+      <v-alert
+        v-if="stagesError"
+        type="warning"
+        variant="tonal"
+        density="compact"
+        class="stage-error"
+        role="alert"
+        >{{ stagesError }}</v-alert
+      >
+      <div class="stage-summary">
+        <button
+          v-for="stage in stageCards"
+          :key="stage.status"
+          type="button"
+          class="stage-card"
+          :class="[`stage-${stage.key}`, { active: stageFilter === stage.status }]"
+          :aria-pressed="stageFilter === stage.status"
+          :aria-label="`${stage.label}: ${stage.count} arquivo(s). Filtrar a lista por esta etapa.`"
+          :disabled="!stagesLoaded"
+          @click="toggleStage(stage.status)"
+        >
+          <span class="stage-icon"><v-icon :icon="stage.icon" size="22" /></span>
+          <span class="stage-body">
+            <span class="stage-label">{{ stage.label }}</span>
+            <strong class="stage-count">{{ stage.count }}</strong>
+            <span class="stage-hint">{{ stage.hint }}</span>
+          </span>
+        </button>
+      </div>
+      <p v-if="stagesLoaded && withoutStage" class="stage-note">
+        {{ withoutStage }} arquivo(s) sem versão registrada.
+      </p>
+    </section>
+
     <section class="file-library" aria-label="Biblioteca de arquivos">
       <div class="library-toolbar">
         <v-text-field
@@ -86,6 +128,7 @@
             <th>Arquivo</th>
             <th>Fonte</th>
             <th>Formato</th>
+            <th>Etapa</th>
             <th>Recebido em</th>
             <th>SHA-256</th>
             <th class="text-right">Consultas</th>
@@ -109,6 +152,14 @@
             </td>
             <td>
               <span class="format-badge">{{ file.formatFile || 'Não informado' }}</span>
+            </td>
+            <td>
+              <span
+                class="stage-badge"
+                :class="`stage-${file.badge.key}`"
+                :title="file.badge.title || undefined"
+                >{{ file.badge.label }}</span
+              >
             </td>
             <td>
               <time
@@ -164,15 +215,20 @@
         <p>
           {{
             files.length
-              ? 'Tente outro nome, fonte, formato ou hash.'
+              ? stageFilter
+                ? 'Nenhum arquivo está na etapa selecionada com esta busca.'
+                : 'Tente outro nome, fonte, formato ou hash.'
               : loadError
                 ? 'Confira a mensagem da API e tente atualizar a listagem.'
                 : 'Os arquivos enviados ou coletados aparecem aqui, mesmo antes de fazerem parte de um conjunto.'
           }}
         </p>
         <v-btn v-if="search" variant="tonal" class="mt-4" @click="search = ''">Limpar busca</v-btn>
+        <v-btn v-if="stageFilter" variant="tonal" class="mt-4 ml-2" @click="stageFilter = null"
+          >Mostrar todas as etapas</v-btn
+        >
         <v-btn
-          v-else-if="!loadError && can('ingestion.run')"
+          v-else-if="!search && !loadError && can('ingestion.run')"
           to="/new-load"
           variant="tonal"
           color="primary"
@@ -283,10 +339,13 @@ import axios from 'axios'
 import ValidationResult from '@/components/ValidationResult.vue'
 import {
   apiError,
+  versionStatuses,
   type ValidationReport,
   type CollectionMetadata,
   type Source,
   type IngestedFile,
+  type FileStage,
+  type VersionStatus,
 } from '@/services/contracts'
 const metadataDialog = ref(false),
   metadataLoading = ref(false),
@@ -350,13 +409,64 @@ const search = ref(''),
   loading = ref(false)
 const files = ref<(IngestedFile & { sourceId: number; sourceName: string })[]>([])
 let epoch = 0
+
+// Etapas (BRUTA, QUARENTENA, TRATADA, PUBLICADA) dos arquivos, vindas de GET /arquivos/etapas.
+// Rótulo, ícone e descrição de cada etapa, na ordem do fluxo.
+const stageInfo: Record<VersionStatus, { label: string; icon: string; hint: string }> = {
+  BRUTA: {
+    label: 'Bruta',
+    icon: 'mdi-database-import-outline',
+    hint: 'Guardados no bucket.',
+  },
+  QUARENTENA: {
+    label: 'Quarentena',
+    icon: 'mdi-shield-alert-outline',
+    hint: 'Retidos para análise antes de seguir.',
+  },
+  TRATADA: {
+    label: 'Tratada',
+    icon: 'mdi-auto-fix',
+    hint: 'Já passaram por tratamento.',
+  },
+  PUBLICADA: {
+    label: 'Publicada',
+    icon: 'mdi-publish',
+    hint: 'Liberados para uso.',
+  },
+}
+// Mapa fileId -> etapa atual. stagesLoaded só vira true quando a API respondeu com sucesso.
+const stages = ref<Record<number, FileStage>>({})
+const stagesLoaded = ref(false),
+  stagesError = ref('')
+// Etapa escolhida nos cards para filtrar a tabela (null = todas).
+const stageFilter = ref<VersionStatus | null>(null)
+function toggleStage(status: VersionStatus) {
+  stageFilter.value = stageFilter.value === status ? null : status
+}
+// Nunca lança erro: se as etapas falharem, a lista de arquivos continua funcionando.
+async function loadStages(current: number) {
+  try {
+    const { data } = await axios.get<FileStage[]>('/arquivos/etapas')
+    if (current !== epoch) return
+    if (!Array.isArray(data)) throw new Error('Resposta inválida de /arquivos/etapas')
+    stages.value = Object.fromEntries(data.map((stage) => [stage.fileId, stage]))
+    stagesLoaded.value = true
+    stagesError.value = ''
+  } catch (e) {
+    if (current !== epoch) return
+    stages.value = {}
+    stagesLoaded.value = false
+    stagesError.value = apiError(e, 'Não foi possível carregar as etapas dos arquivos.')
+  }
+}
+
 async function fetchAll() {
   if (loading.value) return
   const current = ++epoch
   loading.value = true
   loadError.value = ''
   try {
-    const { data } = await axios.get<Source[]>('/fontes')
+    const [{ data }] = await Promise.all([axios.get<Source[]>('/fontes'), loadStages(current)])
     if (current !== epoch) return
     const results = await Promise.allSettled(
       data.map(async (source) => {
@@ -395,18 +505,58 @@ function normalize(value: string) {
     .replace(/[\u0300-\u036f]/g, '')
     .toLocaleLowerCase('pt-BR')
 }
+// Selo da etapa de um arquivo: texto, chave de cor e dica (versão e local no bucket).
+function stageBadge(fileId: number) {
+  const stage = stages.value[fileId]
+  const info = stage ? stageInfo[stage.status] : undefined
+  if (!stage || !info)
+    return { key: 'unknown', label: stagesLoaded.value ? 'Sem etapa' : '—', title: '' }
+  return {
+    key: stage.status.toLowerCase(),
+    label: info.label,
+    title: `Versão ${stage.versionNumber}${stage.location ? ` · ${stage.location}` : ''}`,
+  }
+}
 const filteredFiles = computed(() => {
   const terms = normalize(search.value || '')
     .trim()
     .split(/\s+/)
     .filter(Boolean)
-  return files.value.filter((file) => {
-    const text = normalize(
-      `${file.name} ${file.sourceName} ${file.formatFile ?? ''} ${file.hash ?? ''}`,
-    )
-    return terms.every((term) => text.includes(term))
-  })
+  return files.value
+    .filter((file) => {
+      if (stageFilter.value && stages.value[file.id]?.status !== stageFilter.value) return false
+      const text = normalize(
+        `${file.name} ${file.sourceName} ${file.formatFile ?? ''} ${file.hash ?? ''}`,
+      )
+      return terms.every((term) => text.includes(term))
+    })
+    .map((file) => ({ ...file, badge: stageBadge(file.id) }))
 })
+// Soma de arquivos em cada etapa (sobre todos os arquivos carregados, sem considerar a busca).
+const stageTotals = computed(() => {
+  const counts: Record<VersionStatus, number> = {
+    BRUTA: 0,
+    QUARENTENA: 0,
+    TRATADA: 0,
+    PUBLICADA: 0,
+  }
+  let missing = 0
+  for (const file of files.value) {
+    const status = stages.value[file.id]?.status
+    if (status && status in counts) counts[status]++
+    else missing++
+  }
+  return { counts, missing }
+})
+const withoutStage = computed(() => stageTotals.value.missing)
+const stageCards = computed(() =>
+  versionStatuses.map((status) => ({
+    status,
+    key: status.toLowerCase(),
+    ...stageInfo[status],
+    count: stagesLoaded.value ? String(stageTotals.value.counts[status]) : '—',
+  })),
+)
 const sourceCount = computed(() => new Set(files.value.map((file) => file.sourceId)).size)
 const totalSize = computed(() =>
   files.value.reduce(
@@ -423,12 +573,12 @@ function formatBytes(size: number) {
       : 0
   return `${new Intl.NumberFormat('pt-BR', { maximumFractionDigits: index ? 1 : 0 }).format(size / 1024 ** index)} ${units[index]}`
 }
-function formatReceived(value: string) {
-  if (!value) return 'Não informado'
-  const date = value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(\.\d+)?)?/)
-  return date
-    ? `${date[3]}/${date[2]}/${date[1]} às ${date[4]}:${date[5]}${date[6] ? `:${date[6]}${date[7] || ''}` : ''}`
-    : value.replace('T', ' ')
+function formatReceived(dateString: string | null | undefined): string {
+  if (!dateString) return '';
+  return new Date(dateString).toLocaleString('pt-BR', { 
+    dateStyle: 'short', 
+    timeStyle: 'medium' 
+  });
 }
 function fileIcon(format: string | null) {
   return format?.toLowerCase() === 'csv'
@@ -444,290 +594,8 @@ onBeforeUnmount(() => {
   ++metadataEpoch
 })
 </script>
+
 <style scoped>
-.files-page {
-  max-width: 1500px;
-  margin: auto;
-}
-.files-heading,
-.heading-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-.files-heading {
-  justify-content: space-between;
-  margin-bottom: 24px;
-}
-.eyebrow {
-  font-size: 10px;
-  letter-spacing: 0.12em;
-  font-weight: 700;
-  color: rgb(var(--v-theme-primary));
-  margin-bottom: 6px;
-}
-.library-summary {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
-  margin-bottom: 24px;
-}
-.summary-item {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 18px 20px;
-  border: 1px solid var(--glass-outer-border);
-  border-radius: 16px;
-  background: rgba(var(--v-theme-surface), 0.4);
-}
-.summary-icon,
-.empty-icon {
-  display: grid;
-  place-items: center;
-  width: 44px;
-  height: 44px;
-  flex-shrink: 0;
-  border-radius: 13px;
-  background: rgba(var(--v-theme-primary), 0.08);
-  color: rgb(var(--v-theme-primary));
-}
-.summary-item > div {
-  display: grid;
-  gap: 3px;
-}
-.summary-item strong {
-  font-size: 21px;
-  font-weight: 600;
-  line-height: 1.3;
-}
-.summary-item div > span {
-  font-size: 11px;
-  color: rgba(var(--v-theme-on-surface), 0.55);
-}
-.file-library {
-  border: 1px solid var(--glass-outer-border);
-  border-radius: 18px;
-  background: rgba(var(--v-theme-surface), 0.45);
-  overflow: hidden;
-}
-.library-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
-  padding: 20px 20px 6px;
-}
-.library-search {
-  flex: 1;
-  min-width: 200px;
-  max-width: 640px;
-}
-.result-count {
-  margin-left: auto;
-  font-size: 11px;
-  color: rgba(var(--v-theme-on-surface), 0.55);
-}
-.search-hint {
-  padding: 0 20px 16px;
-  font-size: 11px;
-  color: rgba(var(--v-theme-on-surface), 0.5);
-}
-.library-error {
-  margin: 0 20px 16px;
-}
-.files-table :deep(table) {
-  min-width: 900px;
-}
-.files-table :deep(th) {
-  font-size: 11px;
-  font-weight: 500;
-  white-space: nowrap;
-}
-.files-table :deep(td) {
-  padding-block: 16px !important;
-  border-color: var(--glass-outer-border) !important;
-}
-.file-row:hover {
-  background: rgba(var(--v-theme-on-surface), 0.025);
-}
-.file-identity {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 180px;
-}
-.file-mark {
-  color: rgb(var(--v-theme-primary));
-  opacity: 0.85;
-  display: flex;
-  flex-shrink: 0;
-}
-.file-name-block {
-  display: grid;
-  gap: 4px;
-}
-.file-name {
-  font-size: 12px;
-  font-weight: 500;
-  overflow-wrap: anywhere;
-  max-width: 300px;
-}
-.file-size {
-  font-size: 10px;
-  color: rgba(var(--v-theme-on-surface), 0.5);
-}
-.file-source {
-  font-size: 12px;
-}
-.format-badge {
-  display: inline-flex;
-  padding: 3px 7px;
-  border: 1px solid var(--glass-outer-border);
-  border-radius: 6px;
-  font-size: 9px;
-  text-transform: uppercase;
-  color: rgba(var(--v-theme-on-surface), 0.65);
-}
-.file-date {
-  font-size: 11px;
-  white-space: nowrap;
-  color: rgba(var(--v-theme-on-surface), 0.65);
-}
-.hash {
-  display: block;
-  max-width: 110px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 10px;
-  color: rgba(var(--v-theme-on-surface), 0.45);
-}
-.file-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 4px;
-  flex-wrap: wrap;
-  min-width: 140px;
-}
-.file-actions :deep(.v-btn) {
-  text-transform: none;
-  letter-spacing: 0;
-  font-size: 10px;
-  border-radius: 9px;
-}
-.library-footer {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 14px 20px;
-  border-top: 1px solid var(--glass-outer-border);
-  color: rgba(var(--v-theme-on-surface), 0.5);
-}
-.library-footer p {
-  font-size: 10px;
-  line-height: 1.6;
-}
-.library-footer :deep(.v-icon) {
-  margin-top: 1px;
-  flex-shrink: 0;
-}
-.library-empty,
-.library-loading {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  padding: 56px 24px;
-}
-.empty-icon {
-  width: 64px;
-  height: 64px;
-  border-radius: 20px;
-}
-.library-empty p {
-  max-width: 430px;
-  font-size: 12px;
-  line-height: 1.7;
-  color: rgba(var(--v-theme-on-surface), 0.6);
-  margin-top: 8px;
-}
-.library-loading p {
-  font-size: 12px;
-  margin-top: 12px;
-  color: rgba(var(--v-theme-on-surface), 0.6);
-}
-.dialog-file-name {
-  padding: 0 24px;
-  font-size: 12px;
-  color: rgba(var(--v-theme-on-surface), 0.6);
-  overflow-wrap: anywhere;
-}
-.metadata-summary {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 24px;
-  margin-bottom: 20px;
-}
-.metadata-summary > div {
-  display: grid;
-  gap: 4px;
-}
-.metadata-summary span {
-  font-size: 10px;
-  color: rgba(var(--v-theme-on-surface), 0.55);
-}
-.metadata-summary strong {
-  font-size: 13px;
-  font-weight: 500;
-}
-@media (max-width: 900px) {
-  .library-summary {
-    gap: 8px;
-  }
-  .summary-item {
-    padding: 14px 12px;
-    gap: 10px;
-  }
-  .summary-item strong {
-    font-size: 18px;
-  }
-  .summary-icon {
-    width: 36px;
-    height: 36px;
-  }
-}
-@media (max-width: 600px) {
-  .library-summary {
-    grid-template-columns: 1fr;
-    gap: 6px;
-  }
-  .summary-item {
-    padding: 10px 14px;
-  }
-  .summary-item > div {
-    display: flex;
-    align-items: baseline;
-    gap: 10px;
-  }
-  .summary-icon {
-    width: 30px;
-    height: 30px;
-    border-radius: 9px;
-  }
-  .summary-item strong {
-    font-size: 17px;
-  }
-  .library-toolbar {
-    padding: 16px 16px 6px;
-    gap: 10px;
-  }
-  .search-hint {
-    padding-inline: 16px;
-  }
-  .result-count {
-    margin-left: 0;
-  }
-}
+    @import '@/assets/fileuploads.css';
 </style>
+

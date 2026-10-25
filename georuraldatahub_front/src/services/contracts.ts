@@ -154,3 +154,12 @@ export interface LayerReference {
   size: number | null
   receivedDate: string | null
 }
+
+export type VersionStatus = 'BRUTA' | 'QUARENTENA' | 'TRATADA' | 'PUBLICADA'
+export const versionStatuses: VersionStatus[] = ['BRUTA', 'QUARENTENA', 'TRATADA', 'PUBLICADA']
+export interface FileStage {
+  fileId: number
+  status: VersionStatus
+  versionNumber: number
+  location: string | null
+}
