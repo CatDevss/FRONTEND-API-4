@@ -33,6 +33,7 @@ export function useQuarantine() {
     actionMessage = ref('')
   const confirmResolve = ref(false)
   let resolution: { id: number; userId: number; treatment: string } | null = null
+  const correctionOpen = ref(false)
   const reportOpen = ref(false),
     reportLoading = ref(false),
     reportError = ref('')
@@ -60,6 +61,7 @@ export function useQuarantine() {
   const canEdit = computed(
     () => writable.value && detail.value?.responsibleId === currentUserId.value,
   )
+  const canCorrect = computed(() => canEdit.value && !!detail.value?.validationReportUrl)
   const observationError = computed(() => treatmentError(treatment.value))
   const dirty = computed(() => treatment.value !== (detail.value?.treatment ?? ''))
 
@@ -149,6 +151,7 @@ export function useQuarantine() {
     actionMessage.value = ''
     confirmResolve.value = false
     resolution = null
+    correctionOpen.value = false
     clearReport()
   }
   async function select(id: number) {
@@ -224,6 +227,7 @@ export function useQuarantine() {
             ? 'Observação salva.'
             : 'Análise encerrada. Os dados rejeitados continuam sem aprovação.'
       await Promise.allSettled([loadList(), loadDetail(id)])
+      if (action === 'assumir' && alive && selectedId.value === id) await openCorrection()
     } catch (error) {
       if (!alive || selectedId.value !== id || currentUserId.value !== userId) return
       actionError.value = apiError(error)
@@ -233,11 +237,10 @@ export function useQuarantine() {
       if (alive) busy.value = false
     }
   }
-  async function showReport() {
+  async function fetchReport() {
     const url = detail.value?.validationReportUrl
     if (!url || !ready.value || detailLoading.value) return
     const epoch = ++reportEpoch
-    reportOpen.value = true
     reportLoading.value = true
     report.value = null
     reportError.value = ''
@@ -250,6 +253,16 @@ export function useQuarantine() {
     } finally {
       if (alive && epoch === reportEpoch) reportLoading.value = false
     }
+  }
+  async function showReport() {
+    if (!detail.value?.validationReportUrl || !ready.value || detailLoading.value) return
+    reportOpen.value = true
+    await fetchReport()
+  }
+  async function openCorrection() {
+    if (!canCorrect.value || detailLoading.value) return
+    correctionOpen.value = true
+    if (!report.value && !reportLoading.value) await fetchReport()
   }
   function clearFileFilter() {
     if (!busy.value) void router.replace({ query: { ...route.query, fileId: undefined } })
@@ -293,6 +306,7 @@ export function useQuarantine() {
     actionError,
     actionMessage,
     confirmResolve,
+    correctionOpen,
     reportOpen,
     reportLoading,
     reportError,
@@ -301,6 +315,7 @@ export function useQuarantine() {
     ready,
     canClaim,
     canEdit,
+    canCorrect,
     observationError,
     dirty,
     loadList,
@@ -311,6 +326,8 @@ export function useQuarantine() {
     requestResolve,
     act,
     showReport,
+    fetchReport,
+    openCorrection,
     clearFileFilter,
   }
 }
