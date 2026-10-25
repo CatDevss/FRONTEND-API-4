@@ -32,6 +32,12 @@ export const routes = [
     meta: { permission: 'files.read' as const },
   },
   {
+    path: '/rasters',
+    name: 'rasters',
+    component: () => import('../views/RastersView.vue'),
+    meta: { permission: 'files.read' as const },
+  },
+  {
     path: '/dictionaries',
     name: 'dictionaries',
     component: () => import('../views/DictionariesView.vue'),

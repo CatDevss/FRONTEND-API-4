@@ -41,7 +41,7 @@
             <v-icon icon="mdi-file-upload-outline" size="40" color="primary" />
             <h3 class="text-h6 mt-3">Ingestão manual</h3>
             <p class="my-3">
-              Envie CSV ou GeoJSON (.geojson ou .json) e informe a fonte de origem dos dados.
+              Envie arquivos vetoriais ou GeoTIFF e informe a fonte de origem dos dados.
             </p>
             <v-btn color="primary" :disabled="locked" @click="chooseMode('manual')"
               >Enviar meus arquivos</v-btn
@@ -274,7 +274,7 @@
           </div>
           <FileUploadList
             v-model="uploadedFiles"
-            :allowed-extensions="['csv', 'geojson', 'json']"
+            :allowed-extensions="uploadExtensions"
             :disabled="locked"
           />
           <div class="manual-guidance">
@@ -282,8 +282,9 @@
             <div>
               <strong>O conteúdo também será validado</strong>
               <p>
-                A extensão aceita não garante aprovação. Shapefile, GeoPackage e GeoTIFF não estão
-                disponíveis no envio manual.
+                A extensão aceita não garante aprovação. Envie Shapefile em um arquivo .zip com seus
+                componentes. GeoPackage e GeoTIFF também passam pela validação do backend; rasters
+                disponibilizam metadados e cobertura, sem imagem no mapa.
               </p>
             </div>
           </div>
@@ -452,7 +453,11 @@
               <h3>{{ result.name }}</h3>
               <span v-if="!result.validation" class="scope-badge">Sem relatório</span>
             </div>
-            <ValidationResult v-if="result.validation" :report="result.validation" />
+            <ValidationResult
+              v-if="result.validation"
+              :report="result.validation"
+              :file-id="result.fileId"
+            />
             <v-alert
               v-else
               type="warning"
@@ -476,6 +481,7 @@
   </div>
 </template>
 <script setup lang="ts">
+import { uploadExtensions } from '@/services/processing'
 import { computed, onMounted, ref, watch } from 'vue'
 import axios from 'axios'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'

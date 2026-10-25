@@ -123,6 +123,16 @@
                 >
                 <span class="format-badge">{{ file.formatFile }}</span>
                 <v-btn
+                  v-if="can('treatment.run')"
+                  icon="mdi-auto-fix"
+                  size="x-small"
+                  variant="text"
+                  :aria-label="`Tratar ${file.name}`"
+                  title="Tratamento e histórico"
+                  :disabled="workspace.loadingWorkspace || workspace.membershipBusy"
+                  @click.stop.prevent="$emit('treatFile', file)"
+                />
+                <v-btn
                   v-if="can('datasets.manage')"
                   icon="mdi-link-off"
                   size="x-small"
@@ -136,70 +146,80 @@
                   "
                 />
               </summary>
-              <p v-if="!file.layers.length" class="tree-empty no-layer">
+              <p v-if="!workspace.layersForFile(file).length" class="tree-empty no-layer">
                 <v-icon icon="mdi-layers-off-outline" size="13" />Sem referência de visualização
               </p>
               <div
-                v-for="layer in file.layers"
-                :key="layer.fileId"
+                v-for="layer in workspace.layersForFile(file)"
+                :key="layerKey(layer)"
                 class="layer-node"
                 :class="{
-                  'is-visible': workspace.isVisible(layer.fileId),
-                  'has-error': !!workspace.runtime[layer.fileId]?.error,
+                  'is-visible': workspace.isVisible(layerKey(layer)),
+                  'has-error': !!workspace.runtime[layerKey(layer)]?.error,
                 }"
-                :style="{ '--layer-color': workspace.colorFor(layer.fileId) }"
+                :style="{ '--layer-color': workspace.colorFor(layerKey(layer)) }"
               >
                 <div class="layer-row">
                   <v-checkbox-btn
-                    :model-value="workspace.isVisible(layer.fileId)"
-                    :color="workspace.colorFor(layer.fileId)"
-                    :disabled="!available(layer.fileId) || workspace.loadingWorkspace"
+                    :model-value="workspace.isVisible(layerKey(layer))"
+                    :color="workspace.colorFor(layerKey(layer))"
+                    :disabled="!available(layerKey(layer)) || workspace.loadingWorkspace"
                     :aria-label="`Exibir camada ${layer.name}`"
                     density="compact"
-                    @update:model-value="workspace.setVisibility(layer.fileId, !!$event)"
+                    @update:model-value="workspace.setVisibility(layerKey(layer), !!$event)"
                   />
                   <v-icon
                     icon="mdi-layers-outline"
                     size="15"
-                    :color="workspace.colorFor(layer.fileId)"
+                    :color="workspace.colorFor(layerKey(layer))"
                   />
                   <span class="layer-name" :title="layer.name">{{ layer.name }}</span>
                   <v-progress-circular
-                    v-if="workspace.runtime[layer.fileId]?.loading"
+                    v-if="workspace.runtime[layerKey(layer)]?.loading"
                     indeterminate
                     size="13"
                     width="2"
-                    :color="workspace.colorFor(layer.fileId)"
+                    :color="workspace.colorFor(layerKey(layer))"
                   />
                 </div>
-                <p v-if="workspace.runtime[layer.fileId]?.error" class="layer-error" role="alert">
-                  {{ workspace.runtime[layer.fileId]?.error }}
+                <p
+                  v-if="workspace.runtime[layerKey(layer)]?.error"
+                  class="layer-error"
+                  role="alert"
+                >
+                  {{ workspace.runtime[layerKey(layer)]?.error }}
                 </p>
                 <p
-                  v-else-if="!available(layer.fileId) && !workspace.loadingWorkspace"
+                  v-else-if="!available(layerKey(layer)) && !workspace.loadingWorkspace"
                   class="layer-meta"
                 >
                   Referência indisponível
                 </p>
-                <p v-else-if="workspace.runtime[layer.fileId]?.loading" class="layer-meta">
+                <p v-else-if="workspace.runtime[layerKey(layer)]?.loading" class="layer-meta">
                   Carregando geometria…
                 </p>
                 <p
                   v-else-if="
-                    workspace.runtime[layer.fileId]?.featureCount !== null &&
-                    workspace.runtime[layer.fileId]?.featureCount !== undefined
+                    workspace.runtime[layerKey(layer)]?.featureCount !== null &&
+                    workspace.runtime[layerKey(layer)]?.featureCount !== undefined
                   "
                   class="layer-meta"
                 >
-                  <span class="status-dot" />{{ workspace.runtime[layer.fileId]?.featureCount }}
+                  <span class="status-dot" />{{ workspace.runtime[layerKey(layer)]?.featureCount }}
                   feições
                 </p>
-                <p v-else class="layer-meta">Camada de visualização</p>
-                <div v-if="workspace.isVisible(layer.fileId)" class="layer-controls">
+                <p v-else class="layer-meta">
+                  {{
+                    layer.layerId
+                      ? `Tratada · camada ${layer.layerId} · versão ID ${layer.outputVersionId ?? '—'}`
+                      : 'Visualização mais recente do arquivo'
+                  }}
+                </p>
+                <div v-if="workspace.isVisible(layerKey(layer))" class="layer-controls">
                   <span>Opacidade</span
                   ><v-slider
-                    :model-value="workspace.getOpacity(layer.fileId)"
-                    :color="workspace.colorFor(layer.fileId)"
+                    :model-value="workspace.getOpacity(layerKey(layer))"
+                    :color="workspace.colorFor(layerKey(layer))"
                     min="0.1"
                     max="1"
                     step="0.05"
@@ -208,7 +228,7 @@
                     density="compact"
                     hide-details
                     :aria-label="`Opacidade de ${layer.name}`"
-                    @update:model-value="workspace.setOpacity(layer.fileId, Number($event))"
+                    @update:model-value="workspace.setOpacity(layerKey(layer), Number($event))"
                   />
                 </div>
               </div>
@@ -237,10 +257,16 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { can } from '@/access/session'
+import { layerKey } from '@/services/contracts'
+import type { TreatmentFile } from '@/services/processing'
 import { useWorkspaceStore } from '@/stores/workspace'
 const workspace = useWorkspaceStore(),
   rootOpen = ref(true)
-defineEmits<{ close: []; removeFile: [file: { id: number; name: string; datasetId: number }] }>()
+defineEmits<{
+  close: []
+  removeFile: [file: { id: number; name: string; datasetId: number }]
+  treatFile: [file: TreatmentFile]
+}>()
 watch(
   () => workspace.selectedDatasetId,
   () => {
@@ -260,7 +286,7 @@ function fileKind(format: string) {
   return type === 'csv' ? 'tabular' : ['geojson', 'json'].includes(type) ? 'spatial' : 'other'
 }
 function available(id: number) {
-  return workspace.availableReferences.some((r) => r.fileId === id)
+  return workspace.availableReferences.some((r) => layerKey(r) === id)
 }
 function openDataset(id: number) {
   if (workspace.selectedDatasetId === id) rootOpen.value = !rootOpen.value

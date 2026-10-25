@@ -55,15 +55,7 @@
           :key="`${index}-${file.name}-${file.size}-${file.lastModified}`"
           class="selected-file"
         >
-          <span class="file-icon"
-            ><v-icon
-              :icon="
-                getFileExtension(file.name) === 'csv'
-                  ? 'mdi-file-delimited-outline'
-                  : 'mdi-code-json'
-              "
-              size="22"
-          /></span>
+          <span class="file-icon"><v-icon :icon="fileIcon(file.name)" size="22" /></span>
           <div class="file-info">
             <strong>{{ file.name }}</strong>
             <span
@@ -121,6 +113,14 @@ function getFileExtension(fileName: string): string | null {
   }
 
   return fileName.slice(lastDot + 1).toLowerCase()
+}
+function fileIcon(name: string) {
+  const extension = getFileExtension(name)
+  if (extension === 'csv') return 'mdi-file-delimited-outline'
+  if (['tif', 'tiff'].includes(extension ?? '')) return 'mdi-image-filter-hdr'
+  if (extension === 'zip') return 'mdi-folder-zip-outline'
+  if (extension === 'gpkg') return 'mdi-database-outline'
+  return 'mdi-code-json'
 }
 
 function addFiles(event: Event) {

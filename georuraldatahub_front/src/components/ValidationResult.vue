@@ -28,10 +28,16 @@
       <pre class="raw-content">{{ item.rawContent }}</pre>
     </template>
   </v-data-table>
+  <QuarantineObjects
+    v-if="fileId && ['REJEITADO', 'PARCIAL'].includes(report.status)"
+    :key="fileId"
+    :file-id="fileId"
+  />
 </template>
 <script setup lang="ts">
 import { validationMessage, type ValidationReport } from '@/services/contracts'
-defineProps<{ report: ValidationReport }>()
+import QuarantineObjects from '@/components/QuarantineObjects.vue'
+defineProps<{ report: ValidationReport; fileId?: number | null }>()
 const headers = [
   { title: 'Índice do registro', key: 'recordIndex' },
   { title: 'Resultado', key: 'valid' },

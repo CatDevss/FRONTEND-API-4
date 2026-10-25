@@ -234,6 +234,35 @@ describe('automatic ingestion with Vuetify controls', () => {
 })
 
 describe('manual ingestion with Vuetify controls', () => {
+  it('accepts the new geospatial formats while keeping standalone shapefile components blocked', async () => {
+    const w = await setup('manual')
+    const input = w.find('input[type="file"]')
+    expect(input.attributes('accept')).toBe('.csv,.json,.geojson,.zip,.gpkg,.tif,.tiff')
+    const filenames = [
+      'a.csv',
+      'b.json',
+      'c.geojson',
+      'd.zip',
+      'e.gpkg',
+      'f.tif',
+      'g.TIFF',
+      'h.shp',
+      'i.exe',
+    ]
+    Object.defineProperty(input.element, 'files', {
+      value: filenames.map((name) => new File(['test'], name)),
+    })
+    await input.trigger('change')
+    expect(
+      w
+        .findComponent(FileUploadList)
+        .props('modelValue')!
+        .map((file: File) => file.name),
+    ).toEqual(filenames.slice(0, 7))
+    expect(w.text()).toContain('h.shp: formato não autorizado')
+    expect(w.text()).toContain('i.exe: formato não autorizado')
+    expect(w.text()).toContain('rasters disponibilizam metadados e cobertura')
+  })
   it('removes only a selected file, confirms the source and keeps rejected content blocked after HTTP 201', async () => {
     const w = await setup('manual')
     const csv = new File(['id\n1'], 'dados.csv')

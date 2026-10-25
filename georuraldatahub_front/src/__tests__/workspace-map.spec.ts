@@ -4,6 +4,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import type { Feature, FeatureCollection } from 'geojson'
 import axios from 'axios'
 import WorkspaceMap from '@/components/workspace/WorkspaceMap.vue'
+import RasterCoverageMap from '@/components/RasterCoverageMap.vue'
 import { useWorkspaceStore } from '@/stores/workspace'
 import type { DatasetStructure, LayerReference } from '@/services/contracts'
 
@@ -165,6 +166,68 @@ beforeEach(() => {
   }))
 })
 describe('Leaflet workspace lifecycle', () => {
+  it('renders only the catalog footprint for raster coverage and releases the map', () => {
+    const geometry = {
+      type: 'Polygon' as const,
+      coordinates: [
+        [
+          [-50, -25],
+          [-49, -25],
+          [-49, -24],
+          [-50, -25],
+        ],
+      ],
+    }
+    const wrapper = mount(RasterCoverageMap, { props: { geometry } })
+    expect(leaflet.lib.geoJSON).toHaveBeenCalledWith(
+      { type: 'Feature', properties: {}, geometry },
+      expect.any(Object),
+    )
+    expect(axios.get).not.toHaveBeenCalled()
+    expect(leaflet.lib.tileLayer).toHaveBeenCalledTimes(1)
+    const tileArguments = leaflet.lib.tileLayer.mock.calls[0] as unknown as [string]
+    expect(tileArguments[0]).toContain('openstreetmap.org')
+    expect(leaflet.map.fitBounds).toHaveBeenCalledWith(expect.anything(), {
+      padding: [24, 24],
+      maxZoom: 14,
+    })
+    wrapper.unmount()
+    expect(leaflet.map.remove).toHaveBeenCalled()
+  })
+  it('keeps file and exact treatment layers with the same numeric ID separate', async () => {
+    const { workspace } = setup()
+    await flushPromises()
+    workspace.treatedReferences[1] = [{ ...reference(11), layerId: 11, outputVersionId: 42 }]
+    workspace.setVisibility(-11, true)
+    await flushPromises()
+    expect(axios.get).toHaveBeenCalledWith('/arquivos/11/geojson', expect.any(Object))
+    expect(axios.get).toHaveBeenCalledWith('/camadas/11/geojson', expect.any(Object))
+    expect(leaflet.attached.size).toBe(2)
+    workspace.setVisibility(11, false)
+    await flushPromises()
+    expect(leaflet.attached.size).toBe(1)
+    expect(workspace.isVisible(-11)).toBe(true)
+  })
+  it('discards a late exact layer response after switching datasets', async () => {
+    const { workspace } = setup()
+    await flushPromises()
+    const slow = deferred()
+    vi.mocked(axios.get).mockImplementation(async (path) =>
+      path === '/camadas/99/geojson'
+        ? slow.promise
+        : { data: path.endsWith('/estrutura') ? tree(2, [21]) : [reference(21)] },
+    )
+    workspace.treatedReferences[1] = [{ ...reference(11), layerId: 99 }]
+    workspace.setVisibility(-99, true)
+    await flushPromises()
+    const count = leaflet.lib.geoJSON.mock.calls.length
+    await workspace.selectDataset(2)
+    slow.resolve({ data: features })
+    await flushPromises()
+    expect(leaflet.lib.geoJSON).toHaveBeenCalledTimes(count)
+    expect(workspace.runtime[-99]).toBeUndefined()
+    expect(leaflet.attached.size).toBe(0)
+  })
   it('passes points, lines and polygons to Leaflet, renders safe popups and toggles cached layers', async () => {
     const { workspace } = setup()
     await flushPromises()

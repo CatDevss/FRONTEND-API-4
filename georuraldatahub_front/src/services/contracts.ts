@@ -149,10 +149,18 @@ export interface DatasetStructure extends Dataset {
 
 export interface LayerReference {
   fileId: number
+  // Present only for an exact treatment result, registered by the workspace.
+  layerId?: number
+  outputVersionId?: number | null
   name: string
   formatFile: string
   size: number | null
   receivedDate: string | null
+}
+
+// File references and persisted layers have independent ID sequences.
+export function layerKey(reference: Pick<LayerReference, 'fileId' | 'layerId'>) {
+  return reference.layerId === undefined ? reference.fileId : -reference.layerId
 }
 
 export type VersionStatus = 'BRUTA' | 'QUARENTENA' | 'TRATADA' | 'PUBLICADA'

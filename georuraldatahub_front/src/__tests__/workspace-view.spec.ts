@@ -7,6 +7,7 @@ import axios from 'axios'
 import Home from '@/views/HomeView.vue'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { setSessionUser } from '@/access/session'
+import type { TreatmentExecution } from '@/services/processing'
 
 enableAutoUnmount(afterEach)
 vi.mock('axios', () => ({ default: { get: vi.fn(), isAxiosError: () => true } }))
@@ -54,10 +55,18 @@ const file = {
   dictionaryVersion: 1,
   layers: [reference],
 }
-async function setup(options: { empty?: boolean; noLayers?: boolean } = {}) {
+async function setup(
+  options: {
+    empty?: boolean
+    noLayers?: boolean
+    treatment?: TreatmentExecution
+    query?: string
+  } = {},
+) {
   vi.mocked(axios.get).mockImplementation(async (path) => ({
-    data:
-      path === '/conjuntos'
+    data: path.startsWith('/tratamentos/')
+      ? options.treatment
+      : path === '/conjuntos'
         ? [{ id: 1, name: 'Paraná integrado', userId: 1 }]
         : path.endsWith('/camadas')
           ? options.noLayers || options.empty
@@ -89,7 +98,7 @@ async function setup(options: { empty?: boolean; noLayers?: boolean } = {}) {
     history: createMemoryHistory(),
     routes: [{ path: '/home', component: Container }],
   })
-  await router.push('/home')
+  await router.push(`/home${options.query ?? ''}`)
   const wrapper = mount(Home, {
     global: {
       plugins: [pinia, router],
@@ -112,7 +121,8 @@ async function setup(options: { empty?: boolean; noLayers?: boolean } = {}) {
     },
   })
   await flushPromises()
-  await wrapper.find('button.dataset-row').trigger('click')
+  if (workspace.selectedDatasetId === null)
+    await wrapper.find('button.dataset-row').trigger('click')
   await flushPromises()
   return { wrapper, workspace }
 }
@@ -121,6 +131,54 @@ beforeEach(() => {
   setSessionUser({ id: 1, name: 'Operador', userType: 'OPERADOR', userStatus: 1 })
 })
 describe('workspace explorer and tabs', () => {
+  it('restores a treatment link by fetching the execution and registers the exact layer', async () => {
+    const treatment: TreatmentExecution = {
+      id: 50,
+      fileId: 11,
+      userId: 1,
+      inputVersionId: 1,
+      outputVersionId: 2,
+      status: 'CONCLUIDO',
+      startedAt: null,
+      finishedAt: null,
+      layerId: 11,
+      rasterId: null,
+      inputCount: 1,
+      outputCount: 1,
+      error: null,
+      parameters: { request: { datasetId: 1 } },
+      provenance: null,
+    }
+    const { wrapper, workspace } = await setup({ query: '?dataset=1&treatment=50', treatment })
+    expect(axios.get).toHaveBeenCalledWith('/tratamentos/50')
+    expect(workspace.isVisible(-11)).toBe(true)
+    expect(workspace.isVisible(11)).toBe(false)
+    expect(wrapper.text()).toContain('tratamento 50 · camada 11')
+    expect(wrapper.text()).toContain('Tratada · camada 11 · versão ID 2')
+    expect(wrapper.findAll('input[type="checkbox"]')).toHaveLength(2)
+  })
+  it('does not add a treatment belonging to another dataset', async () => {
+    const treatment: TreatmentExecution = {
+      id: 50,
+      fileId: 11,
+      userId: 1,
+      inputVersionId: 1,
+      outputVersionId: 2,
+      status: 'CONCLUIDO',
+      startedAt: null,
+      finishedAt: null,
+      layerId: 11,
+      rasterId: null,
+      inputCount: 1,
+      outputCount: 1,
+      error: null,
+      parameters: { request: { datasetId: 2 } },
+      provenance: null,
+    }
+    const { wrapper, workspace } = await setup({ query: '?dataset=1&treatment=50', treatment })
+    expect(workspace.visibleLayerIds).toEqual([])
+    expect(wrapper.text()).toContain('não disponibiliza uma camada concluída vinculada')
+  })
   it('shows dataset → source → file → layer and keeps files with no layer in the explorer', async () => {
     const { wrapper, workspace } = await setup()
     expect(wrapper.find('.dataset-row').text()).toBe('Paraná integrado')

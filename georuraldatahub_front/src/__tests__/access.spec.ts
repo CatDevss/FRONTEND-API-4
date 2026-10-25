@@ -17,6 +17,7 @@ describe('role permissions and login integration boundary', () => {
   it.each(roles)('%s can only execute ingestion when it is OPERADOR', (role) => {
     assume(role)
     expect(can('ingestion.run')).toBe(role === 'OPERADOR')
+    expect(can('treatment.run')).toBe(role === 'OPERADOR')
     expect(checkRouteAccess('ingestion.run')).toEqual(
       role === 'OPERADOR' ? true : { name: 'access-required' },
     )

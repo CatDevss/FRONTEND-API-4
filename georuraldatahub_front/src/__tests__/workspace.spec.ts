@@ -4,6 +4,7 @@ import axios from 'axios'
 import { setSessionUser } from '@/access/session'
 import { useWorkspaceStore } from '@/stores/workspace'
 import type { DatasetStructure, LayerReference } from '@/services/contracts'
+import type { TreatmentExecution } from '@/services/processing'
 vi.mock('axios', () => ({
   default: { get: vi.fn(), put: vi.fn(), delete: vi.fn(), isAxiosError: () => true },
 }))
@@ -82,6 +83,44 @@ beforeEach(() => {
   normalApi()
 })
 describe('workspace state and contracts', () => {
+  it('registers exact treated layers only in their associated dataset and preserves them across refreshes', async () => {
+    const store = useWorkspaceStore()
+    await store.selectDataset(1)
+    const result: TreatmentExecution = {
+      id: 50,
+      fileId: 11,
+      inputVersionId: 12,
+      outputVersionId: 20,
+      userId: 1,
+      status: 'CONCLUIDO',
+      startedAt: null,
+      finishedAt: null,
+      layerId: 11,
+      rasterId: null,
+      inputCount: 10,
+      outputCount: 8,
+      error: null,
+      parameters: { request: { datasetId: 1 } },
+      provenance: null,
+    }
+    expect(store.registerTreatment(result)).toBe(true)
+    expect(store.visibleLayerIds).toEqual([-11])
+    expect(
+      store.layersForFile(store.structure!.sources[0]!.files[0]!).map((r) => r.layerId),
+    ).toEqual([undefined, 11])
+    await store.refresh()
+    expect(store.isVisible(-11)).toBe(true)
+    expect(store.availableReferences).toHaveLength(2)
+    await store.selectDataset(2)
+    expect(store.visibleLayerIds).toEqual([])
+    expect(store.registerTreatment(result)).toBe(false)
+    await store.selectDataset(1)
+    expect(store.isVisible(-11)).toBe(true)
+    expect(store.registerTreatment({ ...result, status: 'FALHOU' })).toBe(false)
+    expect(store.registerTreatment({ ...result, fileId: 999 })).toBe(false)
+    store.reset()
+    expect(store.treatedReferences).toEqual({})
+  })
   it('loads the real hierarchy and layer references while retaining files without layers', async () => {
     const store = useWorkspaceStore()
     await store.loadDatasets()

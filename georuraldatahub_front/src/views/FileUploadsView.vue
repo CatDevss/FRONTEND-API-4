@@ -180,6 +180,15 @@
                   variant="tonal"
                   color="primary"
                   size="small"
+                  prepend-icon="mdi-auto-fix"
+                  :aria-label="`Consultar tratamentos de ${file.name}`"
+                  @click="showTreatment(file)"
+                  >{{ can('treatment.run') ? 'Tratar / histórico' : 'Tratamentos' }}</v-btn
+                >
+                <v-btn
+                  variant="tonal"
+                  color="primary"
+                  size="small"
                   prepend-icon="mdi-clipboard-check-outline"
                   :aria-label="`Consultar validação de ${file.name}`"
                   @click="showReport(file.id)"
@@ -320,7 +329,7 @@
               >Tentar novamente</v-btn
             ></v-alert
           >
-          <ValidationResult v-if="report" :report="report" />
+          <ValidationResult v-if="report" :report="report" :file-id="reportFileId" />
           <p v-else-if="!reportLoading && !reportError">
             Validação indisponível. Não presuma que o arquivo foi aprovado.
           </p>
@@ -330,6 +339,12 @@
         >
       </v-card>
     </v-dialog>
+    <FileTreatmentDialog
+      v-if="treatmentDialog"
+      v-model="treatmentDialog"
+      :file="treatmentFile"
+      @treated="fetchAll"
+    />
   </div>
 </template>
 <script setup lang="ts">
@@ -337,6 +352,8 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { can } from '@/access/session'
 import axios from 'axios'
 import ValidationResult from '@/components/ValidationResult.vue'
+import FileTreatmentDialog from '@/components/FileTreatmentDialog.vue'
+import type { TreatmentFile } from '@/services/processing'
 import {
   apiError,
   versionStatuses,
@@ -347,6 +364,12 @@ import {
   type FileStage,
   type VersionStatus,
 } from '@/services/contracts'
+const treatmentDialog = ref(false),
+  treatmentFile = ref<TreatmentFile | null>(null)
+function showTreatment(file: TreatmentFile) {
+  treatmentFile.value = file
+  treatmentDialog.value = true
+}
 const metadataDialog = ref(false),
   metadataLoading = ref(false),
   metadataError = ref('')
@@ -574,11 +597,11 @@ function formatBytes(size: number) {
   return `${new Intl.NumberFormat('pt-BR', { maximumFractionDigits: index ? 1 : 0 }).format(size / 1024 ** index)} ${units[index]}`
 }
 function formatReceived(dateString: string | null | undefined): string {
-  if (!dateString) return '';
-  return new Date(dateString).toLocaleString('pt-BR', { 
-    dateStyle: 'short', 
-    timeStyle: 'medium' 
-  });
+  if (!dateString) return ''
+  return new Date(dateString).toLocaleString('pt-BR', {
+    dateStyle: 'short',
+    timeStyle: 'medium',
+  })
 }
 function fileIcon(format: string | null) {
   return format?.toLowerCase() === 'csv'
@@ -596,6 +619,5 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-    @import '@/assets/fileuploads.css';
+@import '@/assets/fileuploads.css';
 </style>
-

@@ -4,10 +4,12 @@ import axios from 'axios'
 import { can } from '@/access/session'
 import {
   apiError,
+  layerKey,
   type Dataset,
   type DatasetStructure,
   type LayerReference,
 } from '@/services/contracts'
+import { positiveId, type TreatmentExecution } from '@/services/processing'
 
 export interface LayerRuntime {
   loading: boolean
@@ -21,6 +23,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const datasets = ref<Dataset[]>([]),
     structure = ref<DatasetStructure | null>(null)
   const references = ref<LayerReference[]>([])
+  const treatedReferences = ref<Record<number, LayerReference[]>>({})
   const loadingDatasets = ref(false),
     loadingWorkspace = ref(false),
     membershipBusy = ref(false)
@@ -41,15 +44,14 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     () => new Set(structure.value?.sources.flatMap((s) => s.files.map((f) => f.id)) ?? []),
   )
   const availableReferences = computed(() => {
-    const treeIds = new Set(
-      structure.value?.sources.flatMap((s) =>
-        s.files.flatMap((f) => f.layers.map((l) => l.fileId)),
-      ) ?? [],
-    )
-    return references.value.filter((r) => treeIds.has(r.fileId))
+    const treated =
+      selectedDatasetId.value === null
+        ? []
+        : (treatedReferences.value[selectedDatasetId.value] ?? [])
+    return [...references.value, ...treated].filter((r) => fileIds.value.has(r.fileId))
   })
   const visibleLayerIds = computed(() =>
-    availableReferences.value.filter((r) => isVisible(r.fileId)).map((r) => r.fileId),
+    availableReferences.value.filter((r) => isVisible(layerKey(r))).map(layerKey),
   )
   const fileCount = computed(() => fileIds.value.size)
   function isVisible(id: number) {
@@ -59,7 +61,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
   function setVisibility(id: number, visible: boolean) {
     const dataset = selectedDatasetId.value
-    if (dataset === null || !availableReferences.value.some((r) => r.fileId === id)) return
+    if (dataset === null || !availableReferences.value.some((r) => layerKey(r) === id)) return
     visibility.value[dataset] ??= {}
     visibility.value[dataset][id] = visible
   }
@@ -134,12 +136,59 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         'Não foi possível listar as referências de visualização.',
       )
     if (tree.status === 'fulfilled' && layers.status === 'fulfilled') {
-      const available = new Set(availableReferences.value.map((r) => r.fileId))
+      treatedReferences.value[id] = (treatedReferences.value[id] ?? []).filter((r) =>
+        fileIds.value.has(r.fileId),
+      )
+      const available = new Set(availableReferences.value.map(layerKey))
       visibility.value[id] = Object.fromEntries(
         Object.entries(visibility.value[id] ?? {}).filter(([key]) => available.has(Number(key))),
       )
     }
     loadingWorkspace.value = false
+  }
+  function layersForFile(
+    file: DatasetStructure['sources'][number]['files'][number],
+  ): LayerReference[] {
+    const treated =
+      selectedDatasetId.value === null
+        ? []
+        : (treatedReferences.value[selectedDatasetId.value] ?? [])
+    return [
+      ...file.layers.map((r) => ({ ...r, size: file.size, receivedDate: file.receivedDate })),
+      ...treated.filter((r) => r.fileId === file.id),
+    ]
+  }
+  function registerTreatment(execution: TreatmentExecution) {
+    const datasetId = execution.parameters?.request?.datasetId
+    if (
+      execution.status !== 'CONCLUIDO' ||
+      !positiveId(execution.layerId) ||
+      !positiveId(datasetId) ||
+      datasetId !== selectedDatasetId.value ||
+      !fileIds.value.has(execution.fileId)
+    )
+      return false
+    const file = structure.value?.sources
+      .flatMap((s) => s.files)
+      .find((f) => f.id === execution.fileId)
+    if (!file) return false
+    const reference: LayerReference = {
+      fileId: file.id,
+      layerId: execution.layerId,
+      outputVersionId: execution.outputVersionId,
+      name: `${file.name} · tratamento ${execution.id} · camada ${execution.layerId}`,
+      formatFile: 'geojson',
+      size: null,
+      receivedDate: execution.finishedAt,
+    }
+    const entries = treatedReferences.value[datasetId] ?? []
+    treatedReferences.value[datasetId] = [
+      ...entries.filter((r) => r.layerId !== reference.layerId),
+      reference,
+    ]
+    activeTab.value = 'map'
+    setVisibility(layerKey(reference), true)
+    return true
   }
   async function changeMembership(
     fileId: number,
@@ -171,6 +220,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     datasets.value = []
     structure.value = null
     references.value = []
+    treatedReferences.value = {}
     visibility.value = {}
     opacity.value = {}
     runtime.value = {}
@@ -189,6 +239,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     datasets,
     structure,
     references,
+    treatedReferences,
     revision,
     selectedDataset,
     availableReferences,
@@ -215,5 +266,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     getOpacity,
     setOpacity,
     updateRuntime,
+    layersForFile,
+    registerTreatment,
   }
 })

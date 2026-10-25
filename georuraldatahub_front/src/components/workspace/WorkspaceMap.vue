@@ -20,7 +20,7 @@ import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import axios from 'axios'
 import L from 'leaflet'
 import type { Feature, FeatureCollection } from 'geojson'
-import { apiError } from '@/services/contracts'
+import { apiError, layerKey } from '@/services/contracts'
 import { useWorkspaceStore } from '@/stores/workspace'
 import 'leaflet/dist/leaflet.css'
 
@@ -90,7 +90,13 @@ async function loadLayer(id: number) {
   requests.set(id, request)
   workspace.updateRuntime(id, { loading: true, error: '', featureCount: null }, revision)
   try {
-    const { data } = await axios.get<FeatureCollection>(`/arquivos/${id}/geojson`, {
+    const reference = workspace.availableReferences.find((r) => layerKey(r) === id)
+    if (!reference) return
+    const path =
+      reference.layerId === undefined
+        ? `/arquivos/${reference.fileId}/geojson`
+        : `/camadas/${reference.layerId}/geojson`
+    const { data } = await axios.get<FeatureCollection>(path, {
       signal: request.signal,
     })
     if (

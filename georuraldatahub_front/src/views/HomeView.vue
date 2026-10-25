@@ -103,11 +103,23 @@
           v-show="explorerOpen"
           class="explorer-position"
         >
-          <WorkspaceExplorer @close="explorerOpen = false" @remove-file="requestRemoval" />
+          <WorkspaceExplorer
+            @close="explorerOpen = false"
+            @remove-file="requestRemoval"
+            @treat-file="showTreatment"
+          />
         </div>
 
         <main class="workspace-content">
           <div class="workspace-messages" aria-live="polite">
+            <v-progress-linear
+              v-if="openingTreatment"
+              indeterminate
+              aria-label="Abrindo camada tratada"
+            />
+            <v-alert v-if="treatmentError" type="error" variant="tonal" density="compact">{{
+              treatmentError
+            }}</v-alert>
             <v-alert
               v-if="workspace.membershipError"
               type="error"
@@ -236,14 +248,22 @@
           </div>
           <p class="validation-note floating-panel">
             <v-icon icon="mdi-information-outline" size="14" /><span
-              >Prévia dos registros aprovados pela validação. Não representa tratamento concluído ou
-              versão aprovada por um Gestor.</span
+              >As referências por arquivo mostram a visualização mais recente. Resultados de
+              tratamento são identificados pela camada e versão no explorador. A exibição no mapa
+              não significa publicação ou versão aprovada por um Gestor.</span
             >
           </p>
         </footer>
       </div>
     </div>
     <WorkspaceFilesDialog v-if="can('datasets.manage')" v-model="showFiles" />
+    <FileTreatmentDialog
+      v-if="treatmentDialog"
+      v-model="treatmentDialog"
+      :file="treatmentFile"
+      :initial-dataset-id="workspace.selectedDatasetId"
+      @treated="onTreated"
+    />
     <ConfirmDialog
       v-model="showRemoval"
       title="Remover vínculo do conjunto"
@@ -261,6 +281,20 @@ import WorkspaceExplorer from '@/components/workspace/WorkspaceExplorer.vue'
 import WorkspaceMap from '@/components/workspace/WorkspaceMap.vue'
 import WorkspaceFilesDialog from '@/components/workspace/WorkspaceFilesDialog.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import FileTreatmentDialog from '@/components/FileTreatmentDialog.vue'
+import axios from 'axios'
+import { apiError, layerKey } from '@/services/contracts'
+import { positiveId, type TreatmentExecution, type TreatmentFile } from '@/services/processing'
+const treatmentDialog = ref(false),
+  treatmentFile = ref<TreatmentFile | null>(null)
+function showTreatment(file: TreatmentFile) {
+  treatmentFile.value = file
+  treatmentDialog.value = true
+}
+const treatmentError = ref(''),
+  openingTreatment = ref(false)
+let treatmentEpoch = 0,
+  pageDisposed = false
 const workspace = useWorkspaceStore(),
   route = useRoute()
 const mapView = ref<InstanceType<typeof WorkspaceMap> | null>(null),
@@ -282,7 +316,8 @@ const layerFailures = computed(() =>
       id,
       error: layer.error,
       name:
-        workspace.availableReferences.find((r) => r.fileId === Number(id))?.name ?? `Arquivo ${id}`,
+        workspace.availableReferences.find((r) => layerKey(r) === Number(id))?.name ??
+        `Referência ${id}`,
     })),
 )
 let overlayObserver: ResizeObserver | null = null
@@ -325,9 +360,59 @@ async function confirmRemoval() {
 watch(
   () => workspace.selectedDatasetId,
   () => {
+    ++treatmentEpoch
+    openingTreatment.value = false
+    treatmentError.value = ''
+    treatmentDialog.value = false
     showFiles.value = false
     showRemoval.value = false
     removal.value = null
+  },
+)
+async function onTreated(execution: TreatmentExecution) {
+  const datasetId = workspace.selectedDatasetId
+  if (datasetId === null) return
+  await workspace.refresh()
+  if (!pageDisposed && workspace.selectedDatasetId === datasetId)
+    workspace.registerTreatment(execution)
+}
+async function openRequestedTreatment() {
+  const id = Number(route.query.treatment),
+    datasetId = workspace.selectedDatasetId
+  const current = ++treatmentEpoch,
+    revision = workspace.revision
+  treatmentError.value = ''
+  openingTreatment.value = false
+  if (!Number.isSafeInteger(id) || id <= 0 || datasetId === null) return
+  openingTreatment.value = true
+  try {
+    const { data } = await axios.get<TreatmentExecution>(`/tratamentos/${id}`)
+    if (
+      pageDisposed ||
+      current !== treatmentEpoch ||
+      revision !== workspace.revision ||
+      datasetId !== workspace.selectedDatasetId
+    )
+      return
+    if (!positiveId(data.layerId) || !workspace.registerTreatment(data))
+      treatmentError.value =
+        'Este tratamento não disponibiliza uma camada concluída vinculada ao conjunto selecionado.'
+  } catch (error) {
+    if (!pageDisposed && current === treatmentEpoch)
+      treatmentError.value = apiError(error, 'Não foi possível abrir a camada deste tratamento.')
+  } finally {
+    if (!pageDisposed && current === treatmentEpoch) openingTreatment.value = false
+  }
+}
+let initialized = false
+watch(
+  () => [route.query.dataset, route.query.treatment],
+  async () => {
+    if (!initialized) return
+    const datasetId = Number(route.query.dataset)
+    if (Number.isSafeInteger(datasetId) && workspace.datasets.some((d) => d.id === datasetId))
+      await workspace.selectDataset(datasetId)
+    await openRequestedTreatment()
   },
 )
 onBeforeMount(() => workspace.invalidate())
@@ -349,8 +434,13 @@ onMounted(async () => {
   if (Number.isInteger(requested) && workspace.datasets.some((d) => d.id === requested))
     await workspace.selectDataset(requested)
   else await workspace.refresh()
+  if (pageDisposed) return
+  initialized = true
+  await openRequestedTreatment()
 })
 onBeforeUnmount(() => {
+  pageDisposed = true
+  ++treatmentEpoch
   overlayObserver?.disconnect()
   window.removeEventListener('resize', measureOverlays)
 })

@@ -30,7 +30,12 @@ const Button = defineComponent({
 })
 const Container = defineComponent({
   template: '<div><slot /><slot name="prepend" /><slot name="append" /></div>',
-  methods: { resetValidation() {} },
+  methods: {
+    resetValidation() {},
+    async validate() {
+      return { valid: true }
+    },
+  },
 })
 const global = {
   stubs: {
@@ -174,6 +179,7 @@ describe('contract dependent flows', () => {
     expect(axios.post).toHaveBeenCalledWith('/fontes', {
       name: source.name,
       url: source.url,
+      description: null,
       userId: 8,
     })
     expect(wrapper.emitted('saved')?.[0]).toEqual([source])
@@ -271,8 +277,12 @@ describe('ingestion by source and session', () => {
     expect(w.findComponent({ name: 'FileUploadList' }).exists()).toBe(true)
     expect(w.findComponent({ name: 'FileUploadList' }).props('allowedExtensions')).toEqual([
       'csv',
-      'geojson',
       'json',
+      'geojson',
+      'zip',
+      'gpkg',
+      'tif',
+      'tiff',
     ])
     expect(w.findComponent({ name: 'CollectionForm' }).exists()).toBe(false)
     expect(w.find('select[label="Responsável pela ingestão"]').exists()).toBe(false)
