@@ -264,7 +264,7 @@
               >Tentar novamente</v-btn
             ></v-alert
           >
-          <ValidationResult v-if="report" :report="report" />
+          <ValidationResult v-if="report" :report="report" :file-id="reportFileId" />
           <p v-else-if="!reportLoading && !reportError">
             Validação indisponível. Não presuma que o arquivo foi aprovado.
           </p>

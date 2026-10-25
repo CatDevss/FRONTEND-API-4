@@ -131,7 +131,11 @@
           <h4>{{ result.file.name }}</h4>
         </div>
       </div>
-      <ValidationResult v-if="result.file.validation" :report="result.file.validation" />
+      <ValidationResult
+        v-if="result.file.validation"
+        :report="result.file.validation"
+        :file-id="result.file.id"
+      />
       <v-alert v-else type="warning" variant="tonal" density="compact"
         >Validação indisponível. Consulte o relatório antes de utilizar os dados.</v-alert
       >

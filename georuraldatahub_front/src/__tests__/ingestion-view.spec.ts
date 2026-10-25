@@ -97,6 +97,7 @@ async function setup(mode: 'automatic' | 'manual' = 'automatic') {
     routes: [
       { path: '/new-load', component: NewLoad },
       { path: '/dictionaries', component: defineComponent({ template: '<div />' }) },
+      { path: '/quarantine', component: defineComponent({ template: '<div />' }) },
     ],
   })
   await router.push('/new-load')
@@ -139,6 +140,7 @@ const collectionResult = (dictionaryId: number, dictionaryVersion: number) => ({
   status: 201,
   data: {
     file: {
+      id: 77,
       name: 'municipios.geojson',
       validation: {
         status: 'PARCIAL',
@@ -169,6 +171,7 @@ describe('automatic ingestion with Vuetify controls', () => {
       status: 201,
       data: {
         file: {
+          id: 77,
           name: 'prodes.geojson',
           validation: {
             status: 'PARCIAL',
@@ -193,6 +196,7 @@ describe('automatic ingestion with Vuetify controls', () => {
     })
     expect(w.text()).toContain('PARCIAL: 2 registro(s) aprovado(s), 1 rejeitado(s).')
     expect(w.text()).toContain('Somente os registros aprovados ficam disponíveis')
+    expect(w.find('a[href="/quarantine?fileId=77"]').text()).toBe('Consultar quarentena')
     await select(w, 'IBGE_MUNICIPIOS')
     expect(w.findComponent(CollectionForm).props('sourceId')).toBe(2)
     expect(w.text()).not.toContain('prodes.geojson')
@@ -251,7 +255,7 @@ describe('manual ingestion with Vuetify controls', () => {
     const confirm = w.findComponent(ConfirmDialog)
     expect(confirm.props('message')).toContain('1 arquivo(s) para a fonte IBGE')
     expect(axios.post).not.toHaveBeenCalled()
-    type Response = { status: number; data: { validation: ValidationReport } }
+    type Response = { status: number; data: { id: number; validation: ValidationReport } }
     let resolve!: (response: Response) => void
     vi.mocked(axios.post).mockImplementationOnce(
       () => new Promise<Response>((resolveRequest) => (resolve = resolveRequest)),
@@ -279,6 +283,7 @@ describe('manual ingestion with Vuetify controls', () => {
     resolve({
       status: 201,
       data: {
+        id: 99,
         validation: {
           status: 'REJEITADO',
           dictionaryId: 22,
@@ -298,6 +303,7 @@ describe('manual ingestion with Vuetify controls', () => {
       'Arquivo bloqueado para tratamento e visualização.',
     )
     expect(w.findComponent(FileUploadList).props('modelValue')).toEqual([json])
+    expect(w.find('a[href="/quarantine?fileId=99"]').text()).toBe('Consultar quarentena')
     expect(button(w, 'Trocar modalidade').attributes('disabled')).toBeUndefined()
   })
 })

@@ -276,7 +276,7 @@ describe('source discovery and dictionary shortcuts', () => {
     const { wrapper } = await setup('/sources', Sources)
     await wrapper.find('input').setValue('IBGE')
     expect(wrapper.findAll('.source-row')).toHaveLength(1)
-    expect(wrapper.find('.source-row a').attributes('href')).toBe('/dictionaries?source=2')
+    expect(wrapper.find('.source-row a[href="/dictionaries?source=2"]').exists()).toBe(true)
     await wrapper.find('input').setValue('inexistente')
     expect(wrapper.text()).toContain('Nenhuma fonte encontrada')
   })

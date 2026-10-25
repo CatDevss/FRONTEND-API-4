@@ -38,6 +38,12 @@ export const routes = [
     meta: { permission: 'dictionaries.read' as const },
   },
   {
+    path: '/quarantine',
+    name: 'quarantine',
+    component: () => import('../views/QuarantineView.vue'),
+    meta: { permission: 'quarantine.read' as const },
+  },
+  {
     path: '/sources',
     name: 'sources',
     component: () => import('../views/SourcesView.vue'),

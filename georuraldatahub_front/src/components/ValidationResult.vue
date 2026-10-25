@@ -16,6 +16,16 @@
       }}
     </div>
   </v-alert>
+  <v-btn
+    v-if="showQuarantineLink && report.status !== 'VALIDO' && can('quarantine.read')"
+    :to="{ path: '/quarantine', query: fileId != null && fileId > 0 ? { fileId } : {} }"
+    variant="tonal"
+    color="primary"
+    prepend-icon="mdi-shield-alert-outline"
+    size="small"
+    class="mb-4"
+    >Consultar quarentena</v-btn
+  >
   <v-data-table :headers="headers" :items="report.records" :items-per-page="10" density="compact">
     <template #[`item.recordIndex`]="{ item }">{{
       item.recordIndex < 0 ? 'Arquivo' : item.recordIndex
@@ -31,7 +41,11 @@
 </template>
 <script setup lang="ts">
 import { validationMessage, type ValidationReport } from '@/services/contracts'
-defineProps<{ report: ValidationReport }>()
+import { can } from '@/access/session'
+withDefaults(
+  defineProps<{ report: ValidationReport; fileId?: number | null; showQuarantineLink?: boolean }>(),
+  { showQuarantineLink: true },
+)
 const headers = [
   { title: 'Índice do registro', key: 'recordIndex' },
   { title: 'Resultado', key: 'valid' },

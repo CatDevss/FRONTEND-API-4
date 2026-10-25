@@ -58,3 +58,11 @@ npm run lint
 A URL acessível pelo navegador é configurada em `VITE_API_BASE_URL`. O Vite não configura proxy; o backend deve permitir a origem do frontend por CORS. Variáveis `VITE_*` são públicas e não devem conter credenciais.
 
 Na ingestão manual e automatizada, a escolha de dicionário permite pesquisar nome, versão ou ID entre os resultados de `GET /fontes/{sourceId}/dicionarios`. No upload, `dictionaryId` é um parâmetro junto de `userId`; na coleta, é um campo do JSON. O modo automático omite esse ID e deixa o backend escolher a versão mais recente. A versão efetivamente utilizada e o resultado são os retornados no relatório de validação, sem presumir aprovação por um HTTP 201.
+
+## Quarentena — BE-05
+
+A área Quarentena consulta `GET /quarentenas` com paginação do servidor (páginas a partir de zero, 20/50/100 registros), status e filtros Todas, Disponíveis (`unassigned=true`) e Minhas análises (`responsibleId` da sessão). Os resultados de ingestões rejeitadas ou parciais oferecem acesso à área, filtrado pelo ID real do arquivo quando disponível.
+
+Os detalhes usam `GET /quarentenas/{id}`. Assumir e resolver usam POST nas ações `/assumir` e `/resolver`; salvar a observação usa PATCH em `/observacao`. O responsável vem do contexto existente e a observação é obrigatória, limitada a 500 bytes UTF-8 com `TextEncoder`, após remover espaços nas extremidades. Conflitos de responsabilidade atualizam lista e detalhes; requisições atrasadas não substituem a análise selecionada. O relatório é consultado pela `validationReportUrl` retornada, usando o mesmo cliente HTTP, e seu conteúdo é renderizado como texto.
+
+Resolver exige confirmação e encerra apenas a análise: não aprova dados rejeitados, não altera o motivo e não substitui o relatório original. Na matriz da interface, o Operador prepara a correção; os demais perfis consultam. Isso não implementa autorização no backend: ele ainda recebe `userId` sem autenticar essa identidade nem restringir por cargo.

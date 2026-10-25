@@ -9,6 +9,7 @@ import {
 } from '@/services/contracts'
 
 interface UploadResult {
+  fileId?: number | null
   name: string
   success: boolean
   message: string
@@ -89,6 +90,7 @@ export async function startUpload(
         },
       })
       uploadResults.value.push({
+        fileId: data.id ?? null,
         name: file.name,
         success: data.validation?.status === 'VALIDO',
         message: validationMessage(data.validation),
