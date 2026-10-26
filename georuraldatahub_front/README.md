@@ -52,3 +52,21 @@ npm run test:unit
 ```sh
 npm run lint
 ```
+
+## Integração com o backend
+
+A URL acessível pelo navegador é configurada em `VITE_API_BASE_URL`. O Vite não configura proxy; o backend deve permitir a origem do frontend por CORS. Variáveis `VITE_*` são públicas e não devem conter credenciais.
+
+O progresso da ingestão manual e da coleta automatizada aparece em um painel flutuante no canto superior direito, disponível durante a navegação. No envio manual, a porcentagem corresponde aos bytes transferidos do arquivo atual; após a transferência, a barra fica indeterminada enquanto aguarda validação e registro pelo backend. A coleta usa indicador indeterminado e tempo decorrido, pois a API não fornece progresso intermediário. O resultado final permanece visível até ser fechado, respeitando `validation.status` e `file.validation.status`, com acesso à quarentena quando aplicável. Cancelar o envio interrompe a requisição no navegador e os próximos arquivos do lote; não desfaz operações concluídas no servidor. A troca de usuário limpa o painel.
+
+Na ingestão manual e automatizada, a escolha de dicionário permite pesquisar nome, versão ou ID entre os resultados de `GET /fontes/{sourceId}/dicionarios`. No upload, `dictionaryId` é um parâmetro junto de `userId`; na coleta, é um campo do JSON. O modo automático omite esse ID e deixa o backend escolher a versão mais recente. A versão efetivamente utilizada e o resultado são os retornados no relatório de validação, sem presumir aprovação por um HTTP 201.
+
+## Quarentena — BE-05
+
+A área Quarentena consulta `GET /quarentenas` com paginação do servidor (páginas a partir de zero, 20/50/100 registros), status e filtros Todas, Disponíveis (`unassigned=true`) e Minhas análises (`responsibleId` da sessão). Os resultados de ingestões rejeitadas ou parciais oferecem acesso à área, filtrado pelo ID real do arquivo quando disponível.
+
+Na biblioteca Arquivos, o grupo Quarentena cruza a etapa atual com todas as páginas de ocorrências de `GET /quarentenas`, sem filtrar status ou responsável. Cada arquivo é contado uma vez, incluindo rejeições parciais e análises encerradas, com acesso à quarentena filtrada pelo arquivo. A etapa e o local da versão mais recente permanecem separados dessa indicação; encerrar a análise não aprova os registros rejeitados. Falhas na consulta de ocorrências são informadas sem apresentar uma contagem incompleta como definitiva.
+
+Os detalhes usam `GET /quarentenas/{id}`. Assumir e resolver usam POST nas ações `/assumir` e `/resolver`; salvar a observação usa PATCH em `/observacao`. O responsável vem do contexto existente e a observação é obrigatória, limitada a 500 bytes UTF-8 com `TextEncoder`, após remover espaços nas extremidades. Conflitos de responsabilidade atualizam lista e detalhes; requisições atrasadas não substituem a análise selecionada. O relatório é consultado pela `validationReportUrl` retornada, usando o mesmo cliente HTTP, e seu conteúdo é renderizado como texto.
+
+Resolver exige confirmação e encerra apenas a análise: não aprova dados rejeitados, não altera o motivo e não substitui o relatório original. Na matriz da interface, o Operador prepara a correção; os demais perfis consultam. Isso não implementa autorização no backend: ele ainda recebe `userId` sem autenticar essa identidade nem restringir por cargo.

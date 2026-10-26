@@ -1,4 +1,5 @@
 <template>
+  <v-alert v-if="errorMessage" type="error">{{ errorMessage }}</v-alert>
   <v-row v-if="!loading">
     <v-col v-for="d in datasets" :key="d.id" cols="6" md="4">
       <v-card
@@ -6,8 +7,9 @@
         :color="modelValue === d.id ? 'primary' : undefined"
         class="pa-4 h-100"
         role="button"
-        tabindex="0"
         :aria-pressed="modelValue === d.id"
+        :aria-disabled="disabled"
+        :tabindex="disabled ? -1 : 0"
         @click="select(d)"
         @keydown.enter="select(d)"
         @keydown.space.prevent="select(d)"
@@ -20,7 +22,7 @@
     </v-col>
 
     <v-col v-if="datasets.length === 0" cols="12">
-      <p class="text-medium-emphasis">Nenhum conjunto cadastrado para esta fonte.</p>
+      <p class="text-medium-emphasis">Nenhum conjunto cadastrado.</p>
     </v-col>
   </v-row>
 
@@ -28,48 +30,41 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { onMounted, ref } from 'vue'
 import axios from 'axios'
+import { apiError } from '@/services/contracts'
 
 interface DatasetOption {
   id: number
   name: string
-  sourceId: number
+  userId: number
 }
 
-const props = defineProps<{ sourceId: number | null }>()
+const props = defineProps<{ disabled?: boolean }>()
 const modelValue = defineModel<number | null>({ default: null })
 
 const emit = defineEmits<{ 'update:name': [name: string] }>()
 
 const loading = ref(false)
-const allDatasets = ref<DatasetOption[]>([])
+const errorMessage = ref('')
 const datasets = ref<DatasetOption[]>([])
 
 async function fetchDatasets() {
   loading.value = true
   try {
     const { data } = await axios.get<DatasetOption[]>('/conjuntos')
-    allDatasets.value = data
-    filterBySource()
+    datasets.value = data
   } catch (error) {
-    console.error('Erro ao carregar conjuntos', error)
+    errorMessage.value = apiError(error)
   } finally {
     loading.value = false
   }
 }
 
-function filterBySource() {
-  datasets.value = props.sourceId
-    ? allDatasets.value.filter((d) => d.sourceId === props.sourceId)
-    : []
-}
-
-watch(() => props.sourceId, filterBySource)
-
 onMounted(fetchDatasets)
 
 function select(d: DatasetOption) {
+  if (props.disabled) return
   modelValue.value = d.id
   emit('update:name', d.name)
 }
