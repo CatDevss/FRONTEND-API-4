@@ -66,6 +66,8 @@ const report: ValidationReport = {
   records: [],
 }
 function response(path: string) {
+  if (path === '/quarentenas')
+    return { data: { content: [], page: 0, size: 100, totalElements: 0, totalPages: 0 } }
   return {
     data:
       path === '/fontes'
@@ -252,7 +254,7 @@ describe('file library with one unified search', () => {
   it('explains an empty library and leaves auditors without ingestion actions', async () => {
     setSessionUser({ id: 8, name: 'Auditor', userType: 'AUDITOR', userStatus: 1 })
     vi.mocked(axios.get).mockImplementation(async (path) => ({
-      data: path === '/fontes' ? sources : [],
+      data: path === '/fontes' ? sources : path === '/quarentenas' ? response(path).data : [],
     }))
     const wrapper = await setup()
     expect(wrapper.text()).toContain('Seus arquivos começam por uma fonte')

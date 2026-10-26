@@ -438,14 +438,16 @@ describe('dataset membership', () => {
       data:
         url === '/fontes'
           ? [{ id: 2, name: 'IBGE' }]
-          : [
-              {
-                id: 99,
-                name: 'Arquivo independente.csv',
-                size: 9,
-                receivedDate: '2026-10-20T12:00:00',
-              },
-            ],
+          : url === '/quarentenas'
+            ? { content: [], page: 0, size: 100, totalElements: 0, totalPages: 0 }
+            : [
+                {
+                  id: 99,
+                  name: 'Arquivo independente.csv',
+                  size: 9,
+                  receivedDate: '2026-10-20T12:00:00',
+                },
+              ],
     }))
     const w = mount(FileUploads, {
       global: {
