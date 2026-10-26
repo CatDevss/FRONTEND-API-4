@@ -50,12 +50,13 @@
       </div>
     </div>
 
-    <section class="stage-section" aria-label="Arquivos por etapa no bucket">
+    <section class="stage-section" aria-label="Arquivos por etapa e ocorrências de quarentena">
       <div class="stage-heading">
-        <h2>Etapas no bucket</h2>
+        <h2>Etapas e quarentena</h2>
         <p>
-          Bruta reúne todos os arquivos recebidos. As outras etapas consideram a versão mais recente
-          registrada. Clique em uma etapa para filtrar a lista.
+          Bruta reúne todos os arquivos recebidos. Quarentena inclui arquivos com rejeição total ou
+          parcial e seu histórico de análise. Tratada e Publicada consideram a versão mais recente.
+          Um arquivo pode aparecer em mais de um grupo.
         </p>
       </div>
       <v-alert
@@ -67,6 +68,16 @@
         role="alert"
         >{{ stagesError }}</v-alert
       >
+      <v-alert
+        v-if="quarantinesError"
+        type="warning"
+        variant="tonal"
+        density="compact"
+        class="quarantine-error stage-error"
+        role="alert"
+        >Não foi possível conferir as ocorrências de quarentena. {{ quarantinesError }} Use
+        Atualizar para tentar novamente.</v-alert
+      >
       <div class="stage-summary">
         <button
           v-for="stage in stageCards"
@@ -76,7 +87,7 @@
           :class="[`stage-${stage.key}`, { active: stageFilter === stage.status }]"
           :aria-pressed="stageFilter === stage.status"
           :aria-label="`${stage.label}: ${stage.count} arquivo(s). ${stage.status === 'BRUTA' ? 'Mostrar todos os arquivos recebidos.' : 'Filtrar a lista por esta etapa.'}`"
-          :disabled="loading || (stage.status !== 'BRUTA' && !stagesLoaded)"
+          :disabled="loading || !stage.available"
           @click="toggleStage(stage.status)"
         >
           <span class="stage-icon"><v-icon :icon="stage.icon" size="22" /></span>
@@ -128,7 +139,7 @@
             <th>Arquivo</th>
             <th>Fonte</th>
             <th>Formato</th>
-            <th>Etapa atual</th>
+            <th>Etapa / Quarentena</th>
             <th>Recebido em</th>
             <th>SHA-256</th>
             <th class="text-right">Consultas</th>
@@ -154,12 +165,25 @@
               <span class="format-badge">{{ file.formatFile || 'Não informado' }}</span>
             </td>
             <td>
-              <span
-                class="stage-badge"
-                :class="`stage-${file.badge.key}`"
-                :title="file.badge.title || undefined"
-                >{{ file.badge.label }}</span
-              >
+              <div class="file-stage">
+                <span
+                  class="stage-badge"
+                  :class="`stage-${file.badge.key}`"
+                  :title="file.badge.title || undefined"
+                  >{{ file.badge.label }}</span
+                >
+                <v-btn
+                  v-if="file.quarantine"
+                  class="quarantine-link"
+                  variant="text"
+                  color="warning"
+                  size="x-small"
+                  :to="{ path: '/quarantine', query: { fileId: String(file.id) } }"
+                  :title="file.quarantine.title"
+                  :aria-label="`Consultar quarentena de ${file.name}: ${file.quarantine.label}`"
+                  >{{ file.quarantine.label }}</v-btn
+                >
+              </div>
             </td>
             <td>
               <time
@@ -338,6 +362,12 @@ import { can } from '@/access/session'
 import axios from 'axios'
 import ValidationResult from '@/components/ValidationResult.vue'
 import {
+  quarantineClosed,
+  quarantineStatus,
+  type QuarantinePage,
+  type QuarantineRecord,
+} from '@/services/quarantine'
+import {
   apiError,
   versionStatuses,
   type ValidationReport,
@@ -410,7 +440,7 @@ const search = ref(''),
 const files = ref<(IngestedFile & { sourceId: number; sourceName: string })[]>([])
 let epoch = 0
 
-// Etapas (BRUTA, QUARENTENA, TRATADA, PUBLICADA) dos arquivos, vindas de GET /arquivos/etapas.
+// A etapa atual vem de /arquivos/etapas; ocorrências de quarentena são independentes dela.
 // Rótulo, ícone e descrição de cada etapa, na ordem do fluxo.
 const stageInfo: Record<VersionStatus, { label: string; icon: string; hint: string }> = {
   BRUTA: {
@@ -421,7 +451,7 @@ const stageInfo: Record<VersionStatus, { label: string; icon: string; hint: stri
   QUARENTENA: {
     label: 'Quarentena',
     icon: 'mdi-shield-alert-outline',
-    hint: 'Retidos para análise antes de seguir.',
+    hint: 'Rejeições totais ou parciais, incluindo análises encerradas.',
   },
   TRATADA: {
     label: 'Tratada',
@@ -438,6 +468,9 @@ const stageInfo: Record<VersionStatus, { label: string; icon: string; hint: stri
 const stages = ref<Record<number, FileStage>>({})
 const stagesLoaded = ref(false),
   stagesError = ref('')
+const quarantines = ref<Record<number, QuarantineRecord[]>>({})
+const quarantinesLoaded = ref(false),
+  quarantinesError = ref('')
 // Etapa escolhida nos cards para filtrar a tabela (null = todas).
 const stageFilter = ref<VersionStatus | null>(null)
 function toggleStage(status: VersionStatus) {
@@ -460,13 +493,54 @@ async function loadStages(current: number) {
   }
 }
 
+async function loadQuarantines(current: number) {
+  const byFile: Record<number, QuarantineRecord[]> = {}
+  const seen = new Set<number>()
+  try {
+    // Sem filtro de status ou responsável: assumir/resolver não elimina a rejeição original.
+    for (let page = 0; ; page++) {
+      const { data } = await axios.get<QuarantinePage>('/quarentenas', {
+        params: { page, size: 100 },
+      })
+      if (current !== epoch) return
+      if (
+        !Array.isArray(data.content) ||
+        data.page !== page ||
+        !Number.isInteger(data.totalPages) ||
+        data.totalPages < 0
+      )
+        throw new Error('Resposta inválida de /quarentenas')
+      for (const record of data.content) {
+        if (record.fileId === null || seen.has(record.id)) continue
+        seen.add(record.id)
+        const records = (byFile[record.fileId] ??= [])
+        records.push(record)
+      }
+      if (page + 1 >= data.totalPages) break
+    }
+    quarantines.value = byFile
+    quarantinesLoaded.value = true
+    quarantinesError.value = ''
+  } catch (e) {
+    if (current !== epoch) return
+    // Não publicar um índice incompleto se uma das páginas falhar.
+    quarantines.value = {}
+    quarantinesLoaded.value = false
+    quarantinesError.value = apiError(e, 'Consulta de quarentena indisponível.')
+  }
+}
+
 async function fetchAll() {
   if (loading.value) return
   const current = ++epoch
   loading.value = true
   loadError.value = ''
   try {
-    const [{ data }] = await Promise.all([axios.get<Source[]>('/fontes'), loadStages(current)])
+    const [{ data }] = await Promise.all([
+      axios.get<Source[]>('/fontes'),
+      loadStages(current),
+      loadQuarantines(current),
+    ])
     if (current !== epoch) return
     const results = await Promise.allSettled(
       data.map(async (source) => {
@@ -517,6 +591,31 @@ function stageBadge(fileId: number) {
     title: `Versão ${stage.versionNumber}${stage.location ? ` · ${stage.location}` : ''}`,
   }
 }
+function hasQuarantine(fileId: number) {
+  return !!quarantines.value[fileId]?.length || stages.value[fileId]?.status === 'QUARENTENA'
+}
+function quarantineBadge(fileId: number) {
+  const records = quarantines.value[fileId]
+  if (!records?.length) return null
+  const active = records.filter((record) => !quarantineClosed(record))
+  const status = active[0]?.status
+  const label =
+    active.length === 0
+      ? 'Quarentena encerrada'
+      : active.length > 1
+        ? `Quarentena · ${active.length} análises abertas`
+        : status === 'REGISTROS_REJEITADOS'
+          ? 'Quarentena parcial'
+          : status === 'EM_ANALISE'
+            ? 'Quarentena · em análise'
+            : status === 'ARQUIVO_REJEITADO'
+              ? 'Arquivo em quarentena'
+              : 'Ocorrência de quarentena'
+  return {
+    label,
+    title: `${records.map((record) => `#${record.id}: ${quarantineStatus(record.status)}`).join('\n')}\nEncerrar a análise não aprova os registros rejeitados.`,
+  }
+}
 const filteredFiles = computed(() => {
   const terms = normalize(search.value || '')
     .trim()
@@ -527,7 +626,9 @@ const filteredFiles = computed(() => {
       if (
         stageFilter.value &&
         stageFilter.value !== 'BRUTA' &&
-        stages.value[file.id]?.status !== stageFilter.value
+        (stageFilter.value === 'QUARENTENA'
+          ? !hasQuarantine(file.id)
+          : stages.value[file.id]?.status !== stageFilter.value)
       )
         return false
       const text = normalize(
@@ -535,9 +636,9 @@ const filteredFiles = computed(() => {
       )
       return terms.every((term) => text.includes(term))
     })
-    .map((file) => ({ ...file, badge: stageBadge(file.id) }))
+    .map((file) => ({ ...file, badge: stageBadge(file.id), quarantine: quarantineBadge(file.id) }))
 })
-// Bruta representa o acervo recebido; as demais contagens representam a etapa atual.
+// Contagens por arquivo: rejeições parciais podem coexistir com registros tratados/publicados.
 const stageTotals = computed(() => {
   const counts: Record<VersionStatus, number> = {
     BRUTA: files.value.length,
@@ -547,21 +648,27 @@ const stageTotals = computed(() => {
   }
   let missing = 0
   for (const file of files.value) {
+    if (hasQuarantine(file.id)) counts.QUARENTENA++
     const status = stages.value[file.id]?.status
     if (status && status in counts) {
-      if (status !== 'BRUTA') counts[status]++
+      if (status === 'TRATADA' || status === 'PUBLICADA') counts[status]++
     } else missing++
   }
   return { counts, missing }
 })
 const withoutStage = computed(() => stageTotals.value.missing)
+function stageAvailable(status: VersionStatus) {
+  return (
+    status === 'BRUTA' || (status === 'QUARENTENA' ? quarantinesLoaded.value : stagesLoaded.value)
+  )
+}
 const stageCards = computed(() =>
   versionStatuses.map((status) => ({
     status,
     key: status.toLowerCase(),
     ...stageInfo[status],
-    count:
-      status === 'BRUTA' || stagesLoaded.value ? String(stageTotals.value.counts[status]) : '—',
+    available: stageAvailable(status),
+    count: stageAvailable(status) ? String(stageTotals.value.counts[status]) : '—',
   })),
 )
 const sourceCount = computed(() => new Set(files.value.map((file) => file.sourceId)).size)

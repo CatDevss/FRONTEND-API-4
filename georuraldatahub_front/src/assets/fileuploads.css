@@ -216,6 +216,26 @@
   color: rgba(var(--v-theme-on-surface), 0.55);
 }
 
+.file-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.quarantine-link {
+  max-width: 100%;
+  height: auto;
+  min-height: 24px;
+  padding: 3px 6px;
+}
+
+.quarantine-link :deep(.v-btn__content) {
+  white-space: normal;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
 
 .file-library {
   border: 1px solid var(--glass-outer-border);
