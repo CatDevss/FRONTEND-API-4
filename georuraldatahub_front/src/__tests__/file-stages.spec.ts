@@ -26,7 +26,14 @@ const Dialog = defineComponent({
   props: ['modelValue'],
   template: '<div v-if="modelValue"><slot /></div>',
 })
-const base = { formatFile: 'csv', size: 100, ingestionId: 1, userId: 7, location: null, validation: null }
+const base = {
+  formatFile: 'csv',
+  size: 100,
+  ingestionId: 1,
+  userId: 7,
+  location: null,
+  validation: null,
+}
 const files = [
   { ...base, id: 1, name: 'a.csv', hash: 'h1', receivedDate: '2026-10-22T09:30:00' },
   { ...base, id: 2, name: 'b.csv', hash: 'h2', receivedDate: '2026-10-21T09:30:00' },
@@ -44,7 +51,8 @@ beforeEach(() => {
   stagesResponse = async () => ({ data: stagesData })
   vi.mocked(axios.get).mockImplementation(async (path) => {
     if (path === '/arquivos/etapas') return stagesResponse()
-    if (path === '/fontes') return { data: [{ id: 2, name: 'Fonte A', url: 'https://www.ibge.gov.br/' }] }
+    if (path === '/fontes')
+      return { data: [{ id: 2, name: 'Fonte A', url: 'https://www.ibge.gov.br/' }] }
     if (path === '/fontes/2/arquivos') return { data: files }
     return { data: {} }
   })
@@ -80,7 +88,7 @@ const card = (w: Awaited<ReturnType<typeof setup>>, label: string) =>
   cards(w).find((c) => c.find('.stage-label').text() === label)!
 
 describe('cards por etapa do bucket', () => {
-  it('mostra as quatro etapas na ordem do fluxo, com a soma de arquivos em cada uma', async () => {
+  it('mostra o total recebido em Bruta e a etapa atual nos demais cards', async () => {
     const wrapper = await setup()
     expect(cards(wrapper).map((c) => c.find('.stage-label').text())).toEqual([
       'Bruta',
@@ -88,7 +96,7 @@ describe('cards por etapa do bucket', () => {
       'Tratada',
       'Publicada',
     ])
-    expect(cards(wrapper).map((c) => c.find('.stage-count').text())).toEqual(['2', '0', '0', '1'])
+    expect(cards(wrapper).map((c) => c.find('.stage-count').text())).toEqual(['3', '0', '0', '1'])
     expect(axios.get).toHaveBeenCalledWith('/arquivos/etapas')
   })
   it('mostra a etapa de cada arquivo na tabela, com versão e local no bucket na dica', async () => {
@@ -127,6 +135,36 @@ describe('cards por etapa do bucket', () => {
     expect(rows(wrapper)).toHaveLength(1)
     expect(rows(wrapper)[0]!.text()).toContain('b.csv')
   })
+  it('mantém todos os arquivos em Bruta mesmo quando já estão tratados ou publicados', async () => {
+    stagesResponse = async () => ({
+      data: [
+        { fileId: 1, status: 'TRATADA', versionNumber: 3, location: 'tratada/fontes/2/a.csv' },
+        {
+          fileId: 2,
+          status: 'QUARENTENA',
+          versionNumber: 1,
+          location: 'quarentena/fontes/2/b.csv',
+        },
+        stagesData[2],
+      ],
+    })
+    const wrapper = await setup()
+    expect(cards(wrapper).map((c) => c.find('.stage-count').text())).toEqual(['3', '1', '1', '1'])
+    await card(wrapper, 'Tratada').trigger('click')
+    expect(rows(wrapper)).toHaveLength(1)
+    expect(rows(wrapper)[0]!.text()).toContain('a.csv')
+    await card(wrapper, 'Bruta').trigger('click')
+    expect(rows(wrapper)).toHaveLength(3)
+    expect(rows(wrapper).map((row) => row.find('.stage-badge').text())).toEqual([
+      'Tratada',
+      'Quarentena',
+      'Publicada',
+    ])
+    await wrapper.find('input[type="search"]').setValue('c.csv')
+    expect(rows(wrapper)).toHaveLength(1)
+    expect(rows(wrapper)[0]!.find('.stage-badge').text()).toBe('Publicada')
+    expect(card(wrapper, 'Bruta').find('.stage-count').text()).toBe('3')
+  })
   it('mantém a lista funcionando e avisa quando as etapas não carregam', async () => {
     stagesResponse = async () => {
       throw { response: { data: { detail: 'Etapas indisponíveis.' } } }
@@ -134,15 +172,25 @@ describe('cards por etapa do bucket', () => {
     const wrapper = await setup()
     expect(rows(wrapper)).toHaveLength(3)
     expect(wrapper.find('.stage-error').text()).toContain('Etapas indisponíveis.')
-    expect(cards(wrapper).map((c) => c.find('.stage-count').text())).toEqual(['—', '—', '—', '—'])
-    expect(cards(wrapper).every((c) => c.attributes('disabled') !== undefined)).toBe(true)
+    expect(cards(wrapper).map((c) => c.find('.stage-count').text())).toEqual(['3', '—', '—', '—'])
+    expect(card(wrapper, 'Bruta').attributes('disabled')).toBeUndefined()
+    expect(
+      cards(wrapper)
+        .filter((c) => c.find('.stage-label').text() !== 'Bruta')
+        .every((c) => c.attributes('disabled') !== undefined),
+    ).toBe(true)
+    await card(wrapper, 'Bruta').trigger('click')
+    expect(rows(wrapper)).toHaveLength(3)
     expect(rows(wrapper)[0]!.find('.stage-badge').text()).toBe('—')
   })
   it('conta separado o arquivo que não tem versão registrada', async () => {
     stagesResponse = async () => ({ data: stagesData.slice(0, 2) })
     const wrapper = await setup()
-    expect(cards(wrapper).map((c) => c.find('.stage-count').text())).toEqual(['2', '0', '0', '0'])
+    expect(cards(wrapper).map((c) => c.find('.stage-count').text())).toEqual(['3', '0', '0', '0'])
     expect(wrapper.find('.stage-note').text()).toContain('1 arquivo(s) sem versão registrada')
+    expect(rows(wrapper)[2]!.find('.stage-badge').text()).toBe('Sem etapa')
+    await card(wrapper, 'Bruta').trigger('click')
+    expect(rows(wrapper)).toHaveLength(3)
     expect(rows(wrapper)[2]!.find('.stage-badge').text()).toBe('Sem etapa')
   })
 })

@@ -54,8 +54,8 @@
       <div class="stage-heading">
         <h2>Etapas no bucket</h2>
         <p>
-          Etapa atual de cada arquivo, conforme a versão mais recente guardada. Clique em uma etapa
-          para filtrar a lista.
+          Bruta reúne todos os arquivos recebidos. As outras etapas consideram a versão mais recente
+          registrada. Clique em uma etapa para filtrar a lista.
         </p>
       </div>
       <v-alert
@@ -75,8 +75,8 @@
           class="stage-card"
           :class="[`stage-${stage.key}`, { active: stageFilter === stage.status }]"
           :aria-pressed="stageFilter === stage.status"
-          :aria-label="`${stage.label}: ${stage.count} arquivo(s). Filtrar a lista por esta etapa.`"
-          :disabled="!stagesLoaded"
+          :aria-label="`${stage.label}: ${stage.count} arquivo(s). ${stage.status === 'BRUTA' ? 'Mostrar todos os arquivos recebidos.' : 'Filtrar a lista por esta etapa.'}`"
+          :disabled="loading || (stage.status !== 'BRUTA' && !stagesLoaded)"
           @click="toggleStage(stage.status)"
         >
           <span class="stage-icon"><v-icon :icon="stage.icon" size="22" /></span>
@@ -128,7 +128,7 @@
             <th>Arquivo</th>
             <th>Fonte</th>
             <th>Formato</th>
-            <th>Etapa</th>
+            <th>Etapa atual</th>
             <th>Recebido em</th>
             <th>SHA-256</th>
             <th class="text-right">Consultas</th>
@@ -215,7 +215,7 @@
         <p>
           {{
             files.length
-              ? stageFilter
+              ? stageFilter && stageFilter !== 'BRUTA'
                 ? 'Nenhum arquivo está na etapa selecionada com esta busca.'
                 : 'Tente outro nome, fonte, formato ou hash.'
               : loadError
@@ -416,7 +416,7 @@ const stageInfo: Record<VersionStatus, { label: string; icon: string; hint: stri
   BRUTA: {
     label: 'Bruta',
     icon: 'mdi-database-import-outline',
-    hint: 'Guardados no bucket.',
+    hint: 'Todos os arquivos recebidos.',
   },
   QUARENTENA: {
     label: 'Quarentena',
@@ -524,7 +524,12 @@ const filteredFiles = computed(() => {
     .filter(Boolean)
   return files.value
     .filter((file) => {
-      if (stageFilter.value && stages.value[file.id]?.status !== stageFilter.value) return false
+      if (
+        stageFilter.value &&
+        stageFilter.value !== 'BRUTA' &&
+        stages.value[file.id]?.status !== stageFilter.value
+      )
+        return false
       const text = normalize(
         `${file.name} ${file.sourceName} ${file.formatFile ?? ''} ${file.hash ?? ''}`,
       )
@@ -532,10 +537,10 @@ const filteredFiles = computed(() => {
     })
     .map((file) => ({ ...file, badge: stageBadge(file.id) }))
 })
-// Soma de arquivos em cada etapa (sobre todos os arquivos carregados, sem considerar a busca).
+// Bruta representa o acervo recebido; as demais contagens representam a etapa atual.
 const stageTotals = computed(() => {
   const counts: Record<VersionStatus, number> = {
-    BRUTA: 0,
+    BRUTA: files.value.length,
     QUARENTENA: 0,
     TRATADA: 0,
     PUBLICADA: 0,
@@ -543,8 +548,9 @@ const stageTotals = computed(() => {
   let missing = 0
   for (const file of files.value) {
     const status = stages.value[file.id]?.status
-    if (status && status in counts) counts[status]++
-    else missing++
+    if (status && status in counts) {
+      if (status !== 'BRUTA') counts[status]++
+    } else missing++
   }
   return { counts, missing }
 })
@@ -554,7 +560,8 @@ const stageCards = computed(() =>
     status,
     key: status.toLowerCase(),
     ...stageInfo[status],
-    count: stagesLoaded.value ? String(stageTotals.value.counts[status]) : '—',
+    count:
+      status === 'BRUTA' || stagesLoaded.value ? String(stageTotals.value.counts[status]) : '—',
   })),
 )
 const sourceCount = computed(() => new Set(files.value.map((file) => file.sourceId)).size)
@@ -574,11 +581,11 @@ function formatBytes(size: number) {
   return `${new Intl.NumberFormat('pt-BR', { maximumFractionDigits: index ? 1 : 0 }).format(size / 1024 ** index)} ${units[index]}`
 }
 function formatReceived(dateString: string | null | undefined): string {
-  if (!dateString) return '';
-  return new Date(dateString).toLocaleString('pt-BR', { 
-    dateStyle: 'short', 
-    timeStyle: 'medium' 
-  });
+  if (!dateString) return ''
+  return new Date(dateString).toLocaleString('pt-BR', {
+    dateStyle: 'short',
+    timeStyle: 'medium',
+  })
 }
 function fileIcon(format: string | null) {
   return format?.toLowerCase() === 'csv'
@@ -596,6 +603,5 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-    @import '@/assets/fileuploads.css';
+@import '@/assets/fileuploads.css';
 </style>
-
