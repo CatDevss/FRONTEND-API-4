@@ -7,6 +7,7 @@ import * as directives from 'vuetify/directives'
 import axios from 'axios'
 import QuarantineView from '@/views/QuarantineView.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import QuarantineCorrectionDialog from '@/components/QuarantineCorrectionDialog.vue'
 import { setSessionUser, type Role } from '@/access/session'
 import { treatmentBytes, treatmentError, type QuarantineRecord } from '@/services/quarantine'
 
@@ -515,5 +516,61 @@ describe('BE-05 quarantine', () => {
     await flushPromises()
     expect(w.text()).toContain('Somente o responsável pode alterar esta quarentena.')
     expect(w.find('textarea').exists()).toBe(false)
+  })
+
+  const richReport = {
+    ...report,
+    records: [
+      { recordIndex: 3, rawContent: '{"nome":""}', valid: false, errors: ['REQUIRED_FIELD: nome'] },
+      { recordIndex: 4, rawContent: '{"area":"abc"}', valid: false, errors: ['INVALID_TYPE: area'] },
+    ],
+  }
+  function serveRichReport() {
+    vi.mocked(axios.get).mockImplementation(async (path, config) =>
+      path === '/arquivos/99/validacao'
+        ? { data: structuredClone(richReport) }
+        : response(path, config?.params),
+    )
+  }
+
+  it('opens the correction dialog after claiming and can reopen it without reloading the report', async () => {
+    serveRichReport()
+    const { w } = await setup()
+    expect(button(w, 'Corrigir registros')).toBeUndefined()
+    await claim(w)
+    expect(axios.post).toHaveBeenCalledExactlyOnceWith('/quarentenas/1/assumir', { userId: 7 })
+    expect(
+      vi.mocked(axios.get).mock.calls.filter(([path]) => path === '/arquivos/99/validacao'),
+    ).toHaveLength(1)
+    expect(document.body.textContent).toContain('Registros para corrigir')
+    expect(document.body.textContent).toContain('Índice do registro: 3')
+    expect(document.body.textContent).toContain('Campo obrigatório')
+    expect(axios.patch).not.toHaveBeenCalled()
+    const close = [...document.body.querySelectorAll('button')].find(
+      (entry) => entry.textContent?.trim() === 'Fechar',
+    )!
+    close.click()
+    await flushPromises()
+    expect(w.findComponent(QuarantineCorrectionDialog).props('modelValue')).toBe(false)
+    await button(w, 'Corrigir registros').trigger('click')
+    await flushPromises()
+    expect(w.findComponent(QuarantineCorrectionDialog).props('modelValue')).toBe(true)
+    expect(
+      vi.mocked(axios.get).mock.calls.filter(([path]) => path === '/arquivos/99/validacao'),
+    ).toHaveLength(1)
+  })
+
+  it('does not offer corrections to read-only profiles or to other people’s analyses', async () => {
+    serveRichReport()
+    const auditor = await setup('/quarantine', 'AUDITOR')
+    expect(button(auditor.w, 'Corrigir registros')).toBeUndefined()
+    await select(auditor.w, 2)
+    expect(button(auditor.w, 'Corrigir registros')).toBeUndefined()
+    cleanups.forEach((cleanup) => cleanup())
+    cleanups = []
+    const operator = await setup()
+    await select(operator.w, 2)
+    expect(button(operator.w, 'Corrigir registros')).toBeUndefined()
+    expect(document.body.textContent).not.toContain('Registros para corrigir')
   })
 })

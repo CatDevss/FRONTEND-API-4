@@ -331,6 +331,13 @@
               </div>
               <div class="observation-actions">
                 <v-btn
+                  v-if="canCorrect"
+                  variant="tonal"
+                  prepend-icon="mdi-file-document-alert-outline"
+                  :disabled="busy"
+                  @click="openCorrection"
+                  >Corrigir registros</v-btn
+                ><v-btn
                   variant="outlined"
                   :disabled="busy || !!observationError || !dirty"
                   :loading="busy"
@@ -418,12 +425,21 @@
         >
       </v-card>
     </v-dialog>
+    <QuarantineCorrectionDialog
+      v-model="correctionOpen"
+      :file-name="detail?.fileName ?? null"
+      :report="report"
+      :loading="reportLoading"
+      :error="reportError"
+      @retry="fetchReport"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { can, currentUserId } from '@/access/session'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import QuarantineCorrectionDialog from '@/components/QuarantineCorrectionDialog.vue'
 import ValidationResult from '@/components/ValidationResult.vue'
 import { useQuarantine } from '@/composables/useQuarantine'
 import {
@@ -453,6 +469,7 @@ const {
   actionError,
   actionMessage,
   confirmResolve,
+  correctionOpen,
   reportOpen,
   reportLoading,
   reportError,
@@ -461,6 +478,7 @@ const {
   ready,
   canClaim,
   canEdit,
+  canCorrect,
   observationError,
   dirty,
   loadList,
@@ -471,6 +489,8 @@ const {
   requestResolve,
   act,
   showReport,
+  fetchReport,
+  openCorrection,
   clearFileFilter,
 } = useQuarantine()
 function statusColor(value: string | null) {
