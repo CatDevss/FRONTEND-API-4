@@ -233,6 +233,7 @@
               :connector="selectedConnector"
               :source-id="sourceId"
               :source-url="selectedSource?.url || ''"
+              :source-name="selectedSource?.name"
               :user-id="userId"
               :dictionary-id="dictionaryId"
               :ready="collectionReady"
@@ -400,13 +401,7 @@
               <p>
                 Enviando e validando: <strong>{{ currentFileName }}</strong>
               </p>
-              <v-progress-linear
-                :model-value="overallProgress"
-                color="primary"
-                rounded
-                height="4"
-              />
-              <span>{{ completedFiles }} de {{ totalFiles }} arquivos concluídos.</span>
+              <span>Acompanhe o envio e a validação no painel do canto superior direito.</span>
             </div>
             <p v-else class="manual-readiness">
               {{
@@ -501,9 +496,7 @@ import {
   startUpload,
   uploadResults,
   currentFileName,
-  overallProgress,
-  completedFiles,
-  totalFiles,
+  isCollectionInProgress,
 } from '@/composables/uploadLock'
 
 function serviceIcon(id: string) {
@@ -542,7 +535,9 @@ const dictionarySelectionSummary = computed(() =>
       ? `${selectedDictionary.value.name} · v${selectedDictionary.value.version} · #${selectedDictionary.value.id}`
       : 'Dicionário indisponível',
 )
-const locked = computed(() => isUploadInProgress.value || collectionBusy.value)
+const locked = computed(
+  () => isUploadInProgress.value || isCollectionInProgress.value || collectionBusy.value,
+)
 const automaticConnectors = computed(() =>
   catalog.value.filter((c) => c.access === 'AUTOMATICO' && supportedProducts.includes(c.id)),
 )
@@ -574,7 +569,8 @@ const collectionReady = computed(
     baseReady.value &&
     !!selectedConnector.value &&
     compatibleSources.value.some((s) => s.id === sourceId.value) &&
-    !isUploadInProgress.value,
+    !isUploadInProgress.value &&
+    !isCollectionInProgress.value,
 )
 
 async function loadResources() {
@@ -650,7 +646,13 @@ watch(
 )
 async function submitManual() {
   if (!manualReady.value || locked.value || !sourceId.value || !userId.value) return
-  await startUpload(sourceId.value, [...uploadedFiles.value], userId.value, dictionaryId.value)
+  await startUpload(
+    sourceId.value,
+    [...uploadedFiles.value],
+    userId.value,
+    dictionaryId.value,
+    selectedSource.value?.name,
+  )
   await loadDictionary()
 }
 onMounted(loadResources)

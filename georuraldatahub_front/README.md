@@ -57,6 +57,8 @@ npm run lint
 
 A URL acessível pelo navegador é configurada em `VITE_API_BASE_URL`. O Vite não configura proxy; o backend deve permitir a origem do frontend por CORS. Variáveis `VITE_*` são públicas e não devem conter credenciais.
 
+O progresso da ingestão manual e da coleta automatizada aparece em um painel flutuante no canto superior direito, disponível durante a navegação. No envio manual, a porcentagem corresponde aos bytes transferidos do arquivo atual; após a transferência, a barra fica indeterminada enquanto aguarda validação e registro pelo backend. A coleta usa indicador indeterminado e tempo decorrido, pois a API não fornece progresso intermediário. O resultado final permanece visível até ser fechado, respeitando `validation.status` e `file.validation.status`, com acesso à quarentena quando aplicável. Cancelar o envio interrompe a requisição no navegador e os próximos arquivos do lote; não desfaz operações concluídas no servidor. A troca de usuário limpa o painel.
+
 Na ingestão manual e automatizada, a escolha de dicionário permite pesquisar nome, versão ou ID entre os resultados de `GET /fontes/{sourceId}/dicionarios`. No upload, `dictionaryId` é um parâmetro junto de `userId`; na coleta, é um campo do JSON. O modo automático omite esse ID e deixa o backend escolher a versão mais recente. A versão efetivamente utilizada e o resultado são os retornados no relatório de validação, sem presumir aprovação por um HTTP 201.
 
 ## Quarentena — BE-05

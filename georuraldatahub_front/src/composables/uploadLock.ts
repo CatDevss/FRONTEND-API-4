@@ -2,6 +2,11 @@ import { computed, ref } from 'vue'
 import axios from 'axios'
 import { can, currentUserId } from '@/access/session'
 import {
+  beginIngestionProgress,
+  updateIngestionProgress,
+  finishIngestionProgress,
+} from '@/composables/ingestionProgress'
+import {
   apiError,
   validationMessage,
   type IngestedFile,
@@ -24,7 +29,7 @@ export const currentFileName = ref('')
 export const currentFileProgress = ref(0) // 0 a 100, progresso do arquivo sendo enviado agora
 export const uploadResults = ref<UploadResult[]>([])
 
-// Snackbar global com o resultado final, mostrado pelo App.vue
+// Resumo do lote; a apresentação global fica no IngestionProgressPopup.
 export const uploadSnackbarVisible = ref(false)
 export const uploadSnackbarMessage = ref('')
 
@@ -49,9 +54,11 @@ export async function startUpload(
   files: File[],
   userId: number,
   dictionaryId?: number | null,
+  sourceName?: string,
 ) {
   if (
     isUploadInProgress.value ||
+    isCollectionInProgress.value ||
     files.length === 0 ||
     !can('ingestion.run') ||
     currentUserId.value !== userId ||
@@ -65,6 +72,12 @@ export async function startUpload(
   totalFiles.value = files.length
   completedFiles.value = 0
   currentFileProgress.value = 0
+  const progressId = beginIngestionProgress({
+    kind: 'manual',
+    title: `${files.length} arquivo(s) para envio`,
+    source: sourceName || `Fonte #${sourceId}`,
+    fileCount: files.length,
+  })
   let wasCancelled = false
 
   for (const file of files) {
@@ -75,6 +88,13 @@ export async function startUpload(
 
     currentFileName.value = file.name
     currentFileProgress.value = 0
+    updateIngestionProgress(progressId, {
+      stage: 'uploading',
+      fileName: file.name,
+      percent: null,
+      loadedBytes: null,
+      totalBytes: null,
+    })
 
     const formData = new FormData()
     formData.append('file', file)
@@ -84,11 +104,25 @@ export async function startUpload(
         params: { userId, ...(dictionaryId != null ? { dictionaryId } : {}) },
         signal: controller.signal,
         onUploadProgress: (event) => {
+          const percent =
+            event.total && event.total > 0
+              ? Math.min(100, Math.max(0, Math.floor((event.loaded / event.total) * 100)))
+              : null
+          updateIngestionProgress(progressId, {
+            stage: percent === 100 ? 'validating' : 'uploading',
+            loadedBytes: event.loaded,
+            totalBytes: event.total ?? null,
+            percent,
+          })
           if (event.total) {
             currentFileProgress.value = Math.round((event.loaded / event.total) * 100)
           }
         },
       })
+      if (controller.signal.aborted || currentUserId.value !== userId || !can('ingestion.run')) {
+        wasCancelled = true
+        break
+      }
       uploadResults.value.push({
         fileId: data.id ?? null,
         name: file.name,
@@ -109,6 +143,7 @@ export async function startUpload(
     }
 
     completedFiles.value++
+    updateIngestionProgress(progressId, { completedCount: completedFiles.value })
   }
 
   isUploadInProgress.value = false
@@ -125,4 +160,24 @@ export async function startUpload(
     uploadSnackbarMessage.value = `${successCount} de ${totalFiles.value} arquivo(s) enviado(s) e integralmente válido(s).`
   }
   uploadSnackbarVisible.value = true
+  const rejected = uploadResults.value.find(
+    (item) => item.validation?.status === 'REJEITADO' || item.validation?.status === 'PARCIAL',
+  )
+  const registered = uploadResults.value.filter(
+    (item) => item.fileId != null || !!item.validation,
+  ).length
+  finishIngestionProgress(
+    progressId,
+    wasCancelled
+      ? 'cancelled'
+      : failedCount === 0
+        ? 'completed'
+        : registered > 0
+          ? 'attention'
+          : 'error',
+    wasCancelled
+      ? 'O acompanhamento foi interrompido. Confira os arquivos já registrados; interromper a requisição não desfaz operações concluídas no servidor.'
+      : `${uploadSnackbarMessage.value}${failedCount ? ` ${uploadResults.value.find((item) => !item.success)?.message ?? ''}` : ''}`,
+    rejected?.fileId ?? null,
+  )
 }
