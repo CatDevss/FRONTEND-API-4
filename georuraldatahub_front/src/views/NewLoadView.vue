@@ -240,6 +240,7 @@
               :ready="collectionReady"
               @busy="collectionBusy = $event"
               @collected="loadDictionary"
+              @dictionary-generated="selectGeneratedDictionary"
             />
             <div class="collection-owner">
               <v-icon icon="mdi-account-circle-outline" size="18" />
@@ -374,6 +375,14 @@
                 >Conferir novamente</v-btn
               >
             </div>
+            <DictionaryGenerator
+              mode="upload"
+              :source-id="sourceId"
+              :user-id="userId"
+              :file="uploadedFiles.length === 1 ? uploadedFiles[0] : null"
+              :disabled="locked || loading || loadingDictionary"
+              @generated="selectGeneratedDictionary($event.dictionary)"
+            />
             <p class="governance-note">O Gestor pode revisar e editar as regras dos dicionários.</p>
           </section>
 
@@ -487,6 +496,7 @@ import axios from 'axios'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import FileUploadList from '@/components/upload/FileUploadList.vue'
 import CollectionForm from '@/components/CollectionForm.vue'
+import DictionaryGenerator from '@/components/DictionaryGenerator.vue'
 import IngestionDictionarySelect from '@/components/IngestionDictionarySelect.vue'
 import ValidationResult from '@/components/ValidationResult.vue'
 import {
@@ -626,6 +636,17 @@ function selectProduct(id: string) {
 function resolveSource() {
   if (compatibleSources.value.length === 1) sourceId.value = compatibleSources.value[0]!.id
   else if (!compatibleSources.value.some((s) => s.id === sourceId.value)) sourceId.value = null
+}
+function selectGeneratedDictionary(dictionary: Dictionary) {
+  if (!can('dictionaries.generate') || dictionary.sourceId !== sourceId.value) return
+  ++dictionaryEpoch
+  loadingDictionary.value = false
+  dictionaryError.value = ''
+  dictionaries.value = [
+    dictionary,
+    ...dictionaries.value.filter((d) => d.id !== dictionary.id),
+  ].sort((a, b) => b.version - a.version)
+  dictionaryId.value = dictionary.id
 }
 let dictionaryEpoch = 0
 async function loadDictionary() {

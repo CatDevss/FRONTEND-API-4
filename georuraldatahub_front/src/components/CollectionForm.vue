@@ -33,7 +33,7 @@
           persistent-hint
           variant="outlined"
           density="compact"
-          :disabled="busy || verifying"
+          :disabled="busy || verifying || generating"
         />
         <v-select
           v-else-if="product === 'IBGE_BIOMAS'"
@@ -42,7 +42,7 @@
           label="Edição"
           variant="outlined"
           density="compact"
-          :disabled="busy || verifying"
+          :disabled="busy || verifying || generating"
         />
         <v-text-field
           v-else
@@ -63,7 +63,7 @@
           persistent-hint
           variant="outlined"
           density="compact"
-          :disabled="busy || verifying"
+          :disabled="busy || verifying || generating"
         />
         <v-text-field
           v-if="product === 'IBGE_MUNICIPIOS'"
@@ -73,7 +73,7 @@
           persistent-hint
           variant="outlined"
           density="compact"
-          :disabled="busy || verifying"
+          :disabled="busy || verifying || generating"
         />
         <template v-if="product === 'INPE_PRODES'">
           <v-select
@@ -82,7 +82,7 @@
             label="Bioma"
             variant="outlined"
             density="compact"
-            :disabled="busy || verifying"
+            :disabled="busy || verifying || generating"
             hide-details="auto"
           />
         </template>
@@ -95,7 +95,7 @@
           persistent-hint
           variant="outlined"
           density="compact"
-          :disabled="busy || verifying"
+          :disabled="busy || verifying || generating"
           class="bbox-field"
         />
       </div>
@@ -104,7 +104,7 @@
           variant="tonal"
           size="small"
           :loading="editionsLoading"
-          :disabled="busy || verifying || editionsLoading"
+          :disabled="busy || verifying || generating || editionsLoading"
           @click="loadEditions"
           >Consultar edições publicadas</v-btn
         >
@@ -125,7 +125,7 @@
             label="Selecionar edição publicada"
             variant="outlined"
             density="compact"
-            :disabled="busy || verifying"
+            :disabled="busy || verifying || generating"
           />
           <p v-else class="text-body-2">
             Informe a competência e os filtros para verificar o conteúdo.
@@ -155,6 +155,7 @@
         :disabled="
           busy ||
           verifying ||
+          generating ||
           !competence ||
           isCollectionInProgress ||
           isUploadInProgress
@@ -206,6 +207,15 @@
         </details>
       </v-alert>
     </section>
+    <DictionaryGenerator
+      mode="collection"
+      :source-id="sourceId"
+      :user-id="userId"
+      :collection="generationRequest"
+      :disabled="busy || verifying || editionsLoading || !sourceSupportsProduct(sourceUrl, product)"
+      @busy="generationBusy"
+      @generated="emit('dictionaryGenerated', $event.dictionary)"
+    />
     <div class="collection-submit">
       <div class="execution-note">
         <v-icon :icon="busy ? 'mdi-cloud-sync-outline' : 'mdi-play-circle-outline'" size="18" />
@@ -289,10 +299,12 @@ import {
 } from '@/composables/ingestionProgress'
 import { can, currentUserId } from '@/access/session'
 import ValidationResult from '@/components/ValidationResult.vue'
+import DictionaryGenerator from '@/components/DictionaryGenerator.vue'
 import {
   apiError,
   validationMessage,
   sourceSupportsProduct,
+  type Dictionary,
   type Connector,
   type IngestedFile,
   type CollectionMetadata,
@@ -309,7 +321,13 @@ const props = defineProps<{
 const emit = defineEmits<{
   collected: []
   busy: [value: boolean]
+  dictionaryGenerated: [dictionary: Dictionary]
 }>()
+const generating = ref(false)
+function generationBusy(value: boolean) {
+  generating.value = value
+  emit('busy', value)
+}
 const busy = ref(false),
   error = ref('')
 const biomeOptions = [
@@ -323,6 +341,22 @@ const competence = ref(
   municipality = ref(''),
   biome = ref(''),
   bbox = ref('')
+const generationRequest = computed(() => {
+  try {
+    return {
+      ...collectionParameters(
+        product.value,
+        competence.value,
+        municipality.value,
+        biome.value,
+        bbox.value,
+      ),
+      product: product.value,
+    }
+  } catch {
+    return null
+  }
+})
 const result = ref<{ file: IngestedFile; collection: CollectionMetadata } | null>(null)
 const selected = computed(() => props.connector)
 watch(product, () => {
@@ -366,7 +400,7 @@ onBeforeUnmount(() => {
   ++verificationEpoch
 })
 async function loadEditions() {
-  if (editionsLoading.value || busy.value || verifying.value) return
+  if (editionsLoading.value || busy.value || verifying.value || generating.value) return
   const epoch = ++editionEpoch,
     id = product.value
   editionsLoading.value = true
@@ -390,6 +424,7 @@ async function verify() {
     !can('ingestion.run') ||
     busy.value ||
     verifying.value ||
+    generating.value ||
     isCollectionInProgress.value ||
     isUploadInProgress.value
   )
@@ -438,6 +473,7 @@ async function collect() {
     !props.userId ||
     busy.value ||
     verifying.value ||
+    generating.value ||
     isCollectionInProgress.value ||
     isUploadInProgress.value ||
     !sourceSupportsProduct(props.sourceUrl, product.value)

@@ -8,6 +8,7 @@ import * as directives from 'vuetify/directives'
 import axios from 'axios'
 import NewLoad from '@/views/NewLoadView.vue'
 import CollectionForm from '@/components/CollectionForm.vue'
+import DictionaryGenerator from '@/components/DictionaryGenerator.vue'
 import FileUploadList from '@/components/upload/FileUploadList.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import IngestionDictionarySelect from '@/components/IngestionDictionarySelect.vue'
@@ -156,6 +157,39 @@ const collectionResult = (dictionaryId: number, dictionaryVersion: number) => ({
 })
 
 describe('automatic ingestion with Vuetify controls', () => {
+  it('selects the generated dictionary and unlocks collection when the source has none', async () => {
+    vi.mocked(axios.get).mockImplementation(async (path) =>
+      path === '/fontes/2/dicionarios' ? { data: [] } : response(path),
+    )
+    const w = await setup()
+    await select(w, 'IBGE_MUNICIPIOS')
+    expect(w.findComponent(CollectionForm).props('ready')).toBe(false)
+    const dictionary = {
+      ...sourceDictionaries(2)[0]!,
+      id: 99,
+      name: 'Campos do arquivo',
+      version: 1,
+    }
+    w.findComponent(DictionaryGenerator).vm.$emit('generated', { dictionary })
+    await flushPromises()
+    expect(w.findComponent(CollectionForm).props('ready')).toBe(true)
+    expect(w.findComponent(CollectionForm).props('dictionaryId')).toBe(99)
+    expect(w.findComponent(IngestionDictionarySelect).props('modelValue')).toBe(99)
+    expect(w.text()).toContain('Campos do arquivo')
+  })
+
+  it('selects the generated dictionary for manual upload without replacing existing versions', async () => {
+    const w = await prepareManual()
+    const dictionary = { ...sourceDictionaries(2)[0]!, id: 99, name: 'Campos do CSV', version: 4 }
+    const generator = w.findComponent(DictionaryGenerator)
+    expect(generator.props('file')?.name).toBe('dados.csv')
+    generator.vm.$emit('generated', { dictionary })
+    await flushPromises()
+    const selector = w.findComponent(IngestionDictionarySelect)
+    expect(selector.props('modelValue')).toBe(99)
+    expect(selector.props('dictionaries').map((d: Dictionary) => d.id)).toEqual([99, 22, 10])
+  })
+
   it('sends the configured source filters and displays partial validation before changing service', async () => {
     const w = await setup()
     await select(w, 'INPE_PRODES')
