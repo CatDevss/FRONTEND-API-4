@@ -54,9 +54,10 @@
       <div class="stage-heading">
         <h2>Etapas e quarentena</h2>
         <p>
-          Bruta reúne todos os arquivos recebidos. Quarentena inclui arquivos com rejeição total ou
-          parcial e seu histórico de análise. Tratada e Publicada consideram a versão mais recente.
-          Um arquivo pode aparecer em mais de um grupo.
+          Bruta preserva uma cópia permanente de todos os originais, mesmo após o tratamento. A
+          etapa do fluxo é exibida separadamente. Qualquer reprovação envia o arquivo inteiro à
+          quarentena, que também preserva o histórico de análise. Tratada e Publicada consideram a
+          versão mais recente. Um arquivo pode aparecer em mais de um grupo.
         </p>
       </div>
       <v-alert
@@ -101,6 +102,10 @@
       <p v-if="stagesLoaded && withoutStage" class="stage-note">
         {{ withoutStage }} arquivo(s) sem versão registrada.
       </p>
+      <p v-if="unconfirmedStages" class="stage-note legacy-stage-note" role="status">
+        {{ unconfirmedStages }} arquivo(s) antigo(s) com etapa não confirmada. As contagens de
+        Tratada e Publicada incluem apenas etapas confirmadas. Consulte a validação desses arquivos.
+      </p>
     </section>
 
     <section class="file-library" aria-label="Biblioteca de arquivos">
@@ -139,7 +144,7 @@
             <th>Arquivo</th>
             <th>Fonte</th>
             <th>Formato</th>
-            <th>Etapa / Quarentena</th>
+            <th>Fluxo atual / Quarentena</th>
             <th>Recebido em</th>
             <th>SHA-256</th>
             <th class="text-right">Consultas</th>
@@ -357,13 +362,14 @@
   </div>
 </template>
 <script setup lang="ts">
+import { onDeactivated } from 'vue'
+import { usePageRefresh } from '@/composables/pageData'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { can } from '@/access/session'
 import axios from 'axios'
 import ValidationResult from '@/components/ValidationResult.vue'
+import { isLegacyValidatedStage, resolveLegacyFlow, type LegacyFlow } from '@/services/fileStages'
 import {
-import { onDeactivated } from 'vue'
-import { usePageRefresh } from '@/composables/pageData'
   quarantineClosed,
   quarantineStatus,
   type QuarantinePage,
@@ -453,12 +459,12 @@ const stageInfo: Record<VersionStatus, { label: string; icon: string; hint: stri
   QUARENTENA: {
     label: 'Quarentena',
     icon: 'mdi-shield-alert-outline',
-    hint: 'Rejeições totais ou parciais, incluindo análises encerradas.',
+    hint: 'Arquivos reprovados e histórico de análises encerradas.',
   },
   TRATADA: {
     label: 'Tratada',
     icon: 'mdi-auto-fix',
-    hint: 'Já passaram por tratamento.',
+    hint: 'Integralmente aprovados pelo dicionário.',
   },
   PUBLICADA: {
     label: 'Publicada',
@@ -468,6 +474,7 @@ const stageInfo: Record<VersionStatus, { label: string; icon: string; hint: stri
 }
 // Mapa fileId -> etapa atual. stagesLoaded só vira true quando a API respondeu com sucesso.
 const stages = ref<Record<number, FileStage>>({})
+const legacyFlows = ref<Record<number, LegacyFlow>>({})
 const stagesLoaded = ref(false),
   stagesError = ref('')
 const quarantines = ref<Record<number, QuarantineRecord[]>>({})
@@ -484,12 +491,32 @@ async function loadStages(current: number) {
     const { data } = await axios.get<FileStage[]>('/arquivos/etapas')
     if (current !== epoch) return
     if (!Array.isArray(data)) throw new Error('Resposta inválida de /arquivos/etapas')
+    const legacy: Record<number, LegacyFlow> = {}
+    const pending = data.filter(isLegacyValidatedStage)
+    // Limita consultas de relatórios antigos, que podem conter muitos registros.
+    for (let offset = 0; offset < pending.length; offset += 4) {
+      await Promise.all(
+        pending.slice(offset, offset + 4).map(async (stage) => {
+          try {
+            const response = await axios.get<ValidationReport>(
+              `/arquivos/${stage.fileId}/validacao`,
+            )
+            legacy[stage.fileId] = resolveLegacyFlow(response.data)
+          } catch {
+            legacy[stage.fileId] = resolveLegacyFlow()
+          }
+        }),
+      )
+      if (current !== epoch) return
+    }
     stages.value = Object.fromEntries(data.map((stage) => [stage.fileId, stage]))
+    legacyFlows.value = legacy
     stagesLoaded.value = true
     stagesError.value = ''
   } catch (e) {
     if (current !== epoch) return
     stages.value = {}
+    legacyFlows.value = {}
     stagesLoaded.value = false
     stagesError.value = apiError(e, 'Não foi possível carregar as etapas dos arquivos.')
   }
@@ -582,8 +609,19 @@ function normalize(value: string) {
     .toLocaleLowerCase('pt-BR')
 }
 // Selo da etapa de um arquivo: texto, chave de cor e dica (versão e local no bucket).
+function flowStatus(fileId: number) {
+  const legacy = legacyFlows.value[fileId]
+  return legacy ? legacy.status : stages.value[fileId]?.status
+}
 function stageBadge(fileId: number) {
   const stage = stages.value[fileId]
+  const legacy = legacyFlows.value[fileId]
+  if (stage && legacy)
+    return {
+      key: legacy.status?.toLowerCase() ?? 'unknown',
+      label: legacy.label,
+      title: `Versão ${stage.versionNumber} · ${stage.location}\n${legacy.note}`,
+    }
   const info = stage ? stageInfo[stage.status] : undefined
   if (!stage || !info)
     return { key: 'unknown', label: stagesLoaded.value ? 'Sem etapa' : '—', title: '' }
@@ -594,7 +632,7 @@ function stageBadge(fileId: number) {
   }
 }
 function hasQuarantine(fileId: number) {
-  return !!quarantines.value[fileId]?.length || stages.value[fileId]?.status === 'QUARENTENA'
+  return !!quarantines.value[fileId]?.length || flowStatus(fileId) === 'QUARENTENA'
 }
 function quarantineBadge(fileId: number) {
   const records = quarantines.value[fileId]
@@ -630,7 +668,7 @@ const filteredFiles = computed(() => {
         stageFilter.value !== 'BRUTA' &&
         (stageFilter.value === 'QUARENTENA'
           ? !hasQuarantine(file.id)
-          : stages.value[file.id]?.status !== stageFilter.value)
+          : flowStatus(file.id) !== stageFilter.value)
       )
         return false
       const text = normalize(
@@ -651,14 +689,17 @@ const stageTotals = computed(() => {
   let missing = 0
   for (const file of files.value) {
     if (hasQuarantine(file.id)) counts.QUARENTENA++
-    const status = stages.value[file.id]?.status
+    const status = flowStatus(file.id)
     if (status && status in counts) {
       if (status === 'TRATADA' || status === 'PUBLICADA') counts[status]++
-    } else missing++
+    } else if (!legacyFlows.value[file.id]) missing++
   }
   return { counts, missing }
 })
 const withoutStage = computed(() => stageTotals.value.missing)
+const unconfirmedStages = computed(
+  () => files.value.filter((file) => legacyFlows.value[file.id]?.status === null).length,
+)
 function stageAvailable(status: VersionStatus) {
   return (
     status === 'BRUTA' || (status === 'QUARENTENA' ? quarantinesLoaded.value : stagesLoaded.value)
@@ -709,13 +750,13 @@ onBeforeUnmount(() => {
   ++reportEpoch
   ++metadataEpoch
 })
-</script>
-
-<style scoped>
-@import '@/assets/fileuploads.css';
-</style>
 usePageRefresh(fetchAll)
 onDeactivated(() => {
   metadataDialog.value = false
   reportDialog.value = false
 })
+</script>
+
+<style scoped>
+@import '@/assets/fileuploads.css';
+</style>
