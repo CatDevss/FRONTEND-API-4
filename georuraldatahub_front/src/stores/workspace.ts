@@ -14,7 +14,16 @@ export interface LayerRuntime {
   error: string
   featureCount: number | null
 }
-export const layerColors = ['#FE5000', '#85B3C5', '#9DB79A', '#D2B477', '#B9A7CF', '#7DBDB3']
+export const layerColors = [
+  '#FF8A1F', // Laranja vivo
+  '#00D5FF', // Ciano
+  '#FF4FD8', // Magenta
+  '#B6F542', // Lima
+  '#A78BFA', // Violeta
+  '#FFE14A', // Amarelo
+  '#FF5268', // Coral
+  '#F4F7FF', // Branco
+]
 export const useWorkspaceStore = defineStore('workspace', () => {
   const selectedDatasetId = ref<number | null>(null)
   const activeTab = ref<'map' | 'meters'>('map')
@@ -51,6 +60,16 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const visibleLayerIds = computed(() =>
     availableReferences.value.filter((r) => isVisible(r.fileId)).map((r) => r.fileId),
   )
+  // IDs espaçados não devem repetir a mesma cor enquanto houver cores disponíveis.
+  // A ordem por ID mantém as cores ao reordenar referências ou alternar a visibilidade.
+  const layerColorIndices = computed(
+    () =>
+      new Map(
+        [...new Set(availableReferences.value.map((r) => r.fileId))]
+          .sort((a, b) => a - b)
+          .map((id, index) => [id, index]),
+      ),
+  )
   const fileCount = computed(() => fileIds.value.size)
   function isVisible(id: number) {
     return (
@@ -75,7 +94,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     opacity.value[dataset][id] = Math.min(1, Math.max(0.1, value))
   }
   function colorFor(id: number) {
-    return layerColors[Math.abs(id) % layerColors.length] ?? '#FE5000'
+    const index = layerColorIndices.value.get(id) ?? Math.abs(id)
+    return layerColors[index % layerColors.length] ?? '#FF8A1F'
   }
   function updateRuntime(id: number, state: LayerRuntime, expectedRevision: number) {
     if (expectedRevision === revision.value) runtime.value[id] = state

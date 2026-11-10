@@ -1,5 +1,6 @@
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onDeactivated, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { usePageRefresh } from '@/composables/pageData'
 import axios from 'axios'
 import { can, currentUserId } from '@/access/session'
 import { apiError, type ValidationReport } from '@/services/contracts'
@@ -42,10 +43,16 @@ export function useQuarantine() {
     detailEpoch = 0,
     reportEpoch = 0,
     alive = true
-  const fileId = computed(() => {
-    const value = Number(route.query.fileId)
-    return Number.isSafeInteger(value) && value > 0 ? value : null
-  })
+  const fileId = ref<number | null>(null)
+  watch(
+    () => [route.path, route.query.fileId],
+    ([path, query]) => {
+      if (path !== '/quarantine') return
+      const value = Number(query)
+      fileId.value = Number.isSafeInteger(value) && value > 0 ? value : null
+    },
+    { immediate: true },
+  )
   const ready = computed(() => can('quarantine.read') && currentUserId.value !== null)
   const writable = computed(
     () =>
@@ -281,6 +288,12 @@ export function useQuarantine() {
     void loadList()
   })
   void loadList()
+  usePageRefresh(refresh)
+  onDeactivated(() => {
+    reportOpen.value = false
+    correctionOpen.value = false
+    confirmResolve.value = false
+  })
   onBeforeUnmount(() => {
     alive = false
     ++listEpoch

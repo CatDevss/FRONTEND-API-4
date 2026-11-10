@@ -101,21 +101,37 @@ export function sourceSupportsProduct(value: string, product: string): boolean {
   try {
     const url = new URL(value)
     if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return false
-    const ibge = ['IBGE_BIOMAS', 'IBGE_MUNICIPIOS'].includes(product)
-    const agency = ibge ? 'ibge.gov.br' : 'inpe.br'
+    const agency = productAgencies[product]
+    if (!agency) return false
+    const slug = agency.split('.')[0]
     return (
       url.hostname === agency ||
       url.hostname.endsWith(`.${agency}`) ||
-      (!ibge &&
-        url.hostname === 'www.gov.br' &&
-        (url.pathname === '/inpe' || url.pathname.startsWith('/inpe/')))
+      (['ICMBIO', 'ICMBIO_EMBARGOS'].includes(product) &&
+        url.hostname === 'geoservicos.inde.gov.br' &&
+        url.pathname.startsWith('/geoserver/ICMBio/')) ||
+      (url.hostname === 'www.gov.br' &&
+        (url.pathname === `/${slug}` || url.pathname.startsWith(`/${slug}/`)))
     )
   } catch {
     return false
   }
 }
 
-export const supportedProducts = ['IBGE_MUNICIPIOS', 'IBGE_BIOMAS', 'INPE_PRODES', 'INPE_QUEIMADAS']
+export const productAgencies: Record<string, string> = {
+  IBGE_MUNICIPIOS: 'ibge.gov.br',
+  IBGE_BIOMAS: 'ibge.gov.br',
+  INPE_PRODES: 'inpe.br',
+  INPE_QUEIMADAS: 'inpe.br',
+  ICMBIO: 'icmbio.gov.br',
+  ICMBIO_EMBARGOS: 'icmbio.gov.br',
+  MMA: 'mma.gov.br',
+  FUNAI: 'funai.gov.br',
+  INCRA: 'incra.gov.br',
+  SFB: 'florestal.gov.br',
+  IBAMA: 'ibama.gov.br',
+}
+export const supportedProducts = Object.keys(productAgencies)
 export interface IngestionUser {
   id: number
   name: string

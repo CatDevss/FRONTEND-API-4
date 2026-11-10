@@ -136,8 +136,12 @@
                   "
                 />
               </summary>
-              <p v-if="!file.layers.length" class="tree-empty no-layer">
-                <v-icon icon="mdi-layers-off-outline" size="13" />Sem referência de visualização
+              <p
+                v-if="!file.layers.length"
+                class="tree-empty no-layer"
+                title="A prévia exige um formato compatível e uma versão com aprovação integral. Consulte a validação na aba Arquivos."
+              >
+                <v-icon icon="mdi-layers-off-outline" size="13" />Prévia indisponível
               </p>
               <div
                 v-for="layer in file.layers"
@@ -253,11 +257,19 @@ function fileIcon(format: string) {
     ? 'mdi-file-delimited-outline'
     : ['geojson', 'json'].includes(type)
       ? 'mdi-code-json'
-      : 'mdi-file-outline'
+      : ['zip', 'gpkg'].includes(type)
+        ? 'mdi-vector-polygon'
+        : ['tif', 'tiff'].includes(type)
+          ? 'mdi-image-outline'
+          : 'mdi-file-outline'
 }
 function fileKind(format: string) {
   const type = format.toLowerCase()
-  return type === 'csv' ? 'tabular' : ['geojson', 'json'].includes(type) ? 'spatial' : 'other'
+  return type === 'csv'
+    ? 'tabular'
+    : ['geojson', 'json', 'zip', 'gpkg'].includes(type)
+      ? 'spatial'
+      : 'other'
 }
 function available(id: number) {
   return workspace.availableReferences.some((r) => r.fileId === id)

@@ -16,10 +16,16 @@
   </div>
 </template>
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { nextTick, onActivated, onDeactivated, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import axios from 'axios'
 import L from 'leaflet'
-import type { Feature, FeatureCollection } from 'geojson'
+import type { FeatureCollection } from 'geojson'
+import {
+  featuresAt,
+  indexFeatures,
+  type IndexedFeature,
+  type MapInspection,
+} from '@/services/mapInspection'
 import { apiError } from '@/services/contracts'
 import { useWorkspaceStore } from '@/stores/workspace'
 import 'leaflet/dist/leaflet.css'
@@ -28,6 +34,7 @@ const props = defineProps<{
   visible: boolean
   insets?: { top: number; right: number; bottom: number; left: number }
 }>()
+const emit = defineEmits<{ inspect: [result: MapInspection | null] }>()
 const workspace = useWorkspaceStore(),
   element = ref<HTMLElement | null>(null),
   cursor = ref(''),
@@ -38,36 +45,92 @@ let map: L.Map | null = null,
   observer: ResizeObserver | null = null
 const cache = new Map<number, L.GeoJSON>(),
   requests = new Map<number, AbortController>()
+const featureIndexes = new Map<number, IndexedFeature[]>()
+let inspected: L.LatLng | null = null
+let inspectionMarker: L.CircleMarker | null = null
+function closeInspection() {
+  inspected = null
+  inspectionMarker?.remove()
+  inspectionMarker = null
+  emit('inspect', null)
+}
+function refreshInspection() {
+  if (!map || !inspected) return
+  const currentMap = map,
+    point = inspected
+  const pixel = currentMap.latLngToContainerPoint(point),
+    tolerance = 7
+  const northWest = currentMap.containerPointToLatLng([pixel.x - tolerance, pixel.y - tolerance])
+  const southEast = currentMap.containerPointToLatLng([pixel.x + tolerance, pixel.y + tolerance])
+  const query = {
+    longitude: point.lng,
+    latitude: point.lat,
+    pixel,
+    tolerance,
+    bounds: [
+      Math.min(northWest.lng, southEast.lng),
+      Math.min(northWest.lat, southEast.lat),
+      Math.max(northWest.lng, southEast.lng),
+      Math.max(northWest.lat, southEast.lat),
+    ] as [number, number, number, number],
+    project: (position: number[]) =>
+      currentMap.latLngToContainerPoint([position[1]!, position[0]!]),
+  }
+  const result: MapInspection = {
+    latitude: point.lat,
+    longitude: point.lng,
+    groups: [],
+    pending: [],
+    failed: [],
+  }
+  for (const reference of workspace.availableReferences) {
+    if (workspace.runtime[reference.fileId]?.error) result.failed.push(reference.name)
+    if (!workspace.isVisible(reference.fileId)) continue
+    const index = featureIndexes.get(reference.fileId)
+    if (!index) {
+      result.pending.push(reference.name)
+      continue
+    }
+    const features = featuresAt(index, query)
+    if (features.length)
+      result.groups.push({
+        fileId: reference.fileId,
+        name: reference.name,
+        color: workspace.colorFor(reference.fileId),
+        features,
+      })
+  }
+  emit('inspect', result)
+}
+function inspect(event: L.LeafletMouseEvent) {
+  if (!map || !active || !props.visible || workspace.loadingWorkspace) return
+  inspected = event.latlng
+  inspectionMarker?.remove()
+  inspectionMarker = L.circleMarker(inspected, {
+    radius: 9,
+    color: '#FFFFFF',
+    weight: 2,
+    fill: false,
+    interactive: false,
+  }).addTo(map)
+  refreshInspection()
+}
 function styleFor(id: number, geometryType?: string): L.PathOptions {
   const point = geometryType === 'Point' || geometryType === 'MultiPoint'
   return {
-    color: workspace.colorFor(id),
-    weight: point ? 1 : 1.5,
+    color: point ? '#F4F7FF' : workspace.colorFor(id),
+    fillColor: workspace.colorFor(id),
+    weight: point ? 1.25 : 2.5,
     opacity: workspace.getOpacity(id),
-    fillOpacity: workspace.getOpacity(id) * (point ? 0.8 : 0.35),
+    fillOpacity: workspace.getOpacity(id) * (point ? 0.95 : 0.18),
   }
-}
-function attributes(feature: Feature) {
-  const container = document.createElement('div')
-  for (const [key, value] of Object.entries(feature.properties ?? {})) {
-    const row = document.createElement('div'),
-      label = document.createElement('strong'),
-      text = document.createElement('span')
-    label.textContent = `${key}: `
-    text.textContent = typeof value === 'object' ? JSON.stringify(value) : String(value ?? '')
-    row.append(label, text)
-    container.append(row)
-  }
-  if (!container.childNodes.length) container.textContent = 'Esta feição não possui atributos.'
-  return container
 }
 function build(data: FeatureCollection, id: number) {
   return L.geoJSON(data, {
+    interactive: false,
     pointToLayer: (_feature, latlng) =>
-      L.circleMarker(latlng, { radius: 5, ...styleFor(id, 'Point') }),
+      L.circleMarker(latlng, { radius: 5, ...styleFor(id, 'Point'), interactive: false }),
     style: (feature) => styleFor(id, feature?.geometry?.type),
-    onEachFeature: (feature, layer) =>
-      layer.bindPopup(attributes(feature), { maxWidth: 340, maxHeight: 260 }),
   })
 }
 function clear() {
@@ -76,6 +139,8 @@ function clear() {
   requests.clear()
   cache.forEach((layer) => layer.remove())
   cache.clear()
+  featureIndexes.clear()
+  closeInspection()
   cursor.value = ''
   notice.value = ''
   map?.closePopup()
@@ -104,6 +169,7 @@ async function loadLayer(id: number) {
       throw new Error('invalid-geojson')
     const layer = build(data, id)
     cache.set(id, layer)
+    featureIndexes.set(id, indexFeatures(data))
     workspace.updateRuntime(
       id,
       { loading: false, error: '', featureCount: data.features.length },
@@ -133,6 +199,10 @@ async function loadLayer(id: number) {
     )
   } finally {
     if (requests.get(id) === request) requests.delete(id)
+    if (epoch === generation) {
+      inspectionMarker?.bringToFront()
+      refreshInspection()
+    }
   }
 }
 function sync() {
@@ -144,6 +214,7 @@ function sync() {
     } else layer.remove()
   }
   for (const id of workspace.visibleLayerIds) void loadLayer(id)
+  inspectionMarker?.bringToFront()
 }
 function fitVisibleLayers() {
   const bounds = L.latLngBounds([])
@@ -181,10 +252,14 @@ function visiblePadding() {
 function resetView() {
   map?.fitBounds(parana, visiblePadding())
 }
+let active = true
 function resize() {
-  map?.invalidateSize()
+  if (active) map?.invalidateSize()
 }
 watch(() => workspace.revision, clear, { flush: 'sync' })
+watch(() => [workspace.visibleLayerIds, workspace.availableReferences], refreshInspection, {
+  deep: true,
+})
 watch(
   () => [
     workspace.visibleLayerIds,
@@ -209,6 +284,7 @@ onMounted(() => {
   const streets = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; OpenStreetMap contributors',
     maxZoom: 19,
+    className: 'map-tiles-dark',
   })
   const satellite = L.tileLayer(
     'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
@@ -216,10 +292,14 @@ onMounted(() => {
   )
   streets.addTo(map)
   L.control
-    .layers({ Ruas: streets, Satélite: satellite }, undefined, { position: 'bottomright' })
+    .layers({ 'Ruas (escuro)': streets, Satélite: satellite }, undefined, {
+      position: 'bottomright',
+    })
     .addTo(map)
   L.control.zoom({ position: 'bottomright' }).addTo(map)
   L.control.scale({ imperial: false }).addTo(map)
+  map.on('click', inspect)
+  map.on('zoomend', refreshInspection)
   map.on('mousemove', (event: L.LeafletMouseEvent) => {
     cursor.value = `${event.latlng.lat.toFixed(5)}, ${event.latlng.lng.toFixed(5)}`
   })
@@ -234,6 +314,14 @@ onMounted(() => {
   sync()
   resize()
 })
+onActivated(async () => {
+  active = true
+  await nextTick()
+  resize()
+})
+onDeactivated(() => {
+  active = false
+})
 onBeforeUnmount(() => {
   clear()
   observer?.disconnect()
@@ -241,7 +329,7 @@ onBeforeUnmount(() => {
   map?.remove()
   map = null
 })
-defineExpose({ fitVisibleLayers, resetView })
+defineExpose({ fitVisibleLayers, resetView, closeInspection })
 </script>
 <style scoped>
 .map-shell {
@@ -254,7 +342,11 @@ defineExpose({ fitVisibleLayers, resetView })
   width: 100%;
   height: 100%;
   min-height: 0;
-  background: rgb(var(--v-theme-background));
+  background: #141414;
+}
+.map-shell :deep(.map-tiles-dark) {
+  /* Escurece apenas a base cartográfica; feições e imagens de satélite mantêm suas cores. */
+  filter: grayscale(1) invert(1) contrast(0.9);
 }
 .map-cursor {
   position: absolute;
@@ -331,22 +423,5 @@ defineExpose({ fitVisibleLayers, resetView })
   border-color: rgba(var(--v-theme-on-surface), 0.4);
   text-shadow: none;
   border-radius: 4px;
-}
-.map-shell :deep(.leaflet-popup-content-wrapper),
-.map-shell :deep(.leaflet-popup-tip) {
-  background: rgb(var(--v-theme-surface));
-  color: rgb(var(--v-theme-on-surface));
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
-}
-.map-shell :deep(.leaflet-popup-content-wrapper) {
-  border: 1px solid var(--glass-outer-border);
-  border-radius: 16px;
-}
-.map-shell :deep(.leaflet-popup-content) {
-  line-height: 1.7;
-  overflow-wrap: anywhere;
-}
-.map-shell :deep(.leaflet-popup-close-button) {
-  color: rgba(var(--v-theme-on-surface), 0.65);
 }
 </style>

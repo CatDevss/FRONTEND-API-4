@@ -34,6 +34,7 @@ export const permissionRoles = {
   'sources.update': ['GESTOR', 'OPERADOR', 'ANALISTA'],
   'dictionaries.read': ['GESTOR', 'OPERADOR', 'ANALISTA', 'AUDITOR'],
   'dictionaries.manage': ['GESTOR'],
+  'dictionaries.generate': ['GESTOR', 'OPERADOR'],
   'datasets.read': ['GESTOR', 'OPERADOR', 'ANALISTA', 'AUDITOR'],
   'datasets.manage': ['OPERADOR'],
   'map.read': ['GESTOR', 'OPERADOR', 'ANALISTA', 'AUDITOR'],
