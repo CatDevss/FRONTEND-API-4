@@ -195,7 +195,7 @@ describe('automatic ingestion with Vuetify controls', () => {
       bbox: [-54, -26, -50, -23],
     })
     expect(w.text()).toContain('PARCIAL: 2 registro(s) aprovado(s), 1 rejeitado(s).')
-    expect(w.text()).toContain('Somente os registros aprovados ficam disponíveis')
+    expect(w.text()).toContain('registros válidos não são disponibilizados separadamente')
     expect(w.find('a[href="/quarantine?fileId=77"]').text()).toBe('Consultar quarentena')
     await select(w, 'IBGE_MUNICIPIOS')
     expect(w.findComponent(CollectionForm).props('sourceId')).toBe(2)
@@ -299,9 +299,7 @@ describe('manual ingestion with Vuetify controls', () => {
     expect(w.find('.manual-results').text()).toContain(
       'REJEITADO: 0 registro(s) aprovado(s), 1 rejeitado(s).',
     )
-    expect(w.find('.manual-results').text()).toContain(
-      'Arquivo bloqueado para tratamento e visualização.',
-    )
+    expect(w.find('.manual-results').text()).toContain('Arquivo inteiro em quarentena.')
     expect(w.findComponent(FileUploadList).props('modelValue')).toEqual([json])
     expect(w.find('a[href="/quarantine?fileId=99"]').text()).toBe('Consultar quarentena')
     expect(button(w, 'Trocar modalidade').attributes('disabled')).toBeUndefined()
@@ -432,6 +430,63 @@ describe('dictionary selection for ingestion', () => {
     expect(button(w, 'Enviar e validar arquivos').attributes('disabled')).toBeDefined()
     await chooseDictionary(w, 'latest')
     expect(button(w, 'Enviar e validar arquivos').attributes('disabled')).toBeUndefined()
+    expect(axios.post).not.toHaveBeenCalled()
+  })
+})
+
+describe('new backend capabilities with Vuetify controls', () => {
+  it('offers the new automatic services and verifies MMA without a registered source', async () => {
+    const products = ['ICMBIO', 'ICMBIO_EMBARGOS', 'MMA', 'FUNAI', 'INCRA', 'SFB', 'IBAMA']
+    vi.mocked(axios.get).mockImplementation(async (path) =>
+      path === '/fontes/conectores'
+        ? {
+            data: [
+              ...connectors,
+              ...products.map((id) => ({
+                id,
+                agency: id,
+                product: id,
+                access: 'AUTOMATICO',
+                documentation: '',
+                limitations: '',
+              })),
+            ],
+          }
+        : response(path),
+    )
+    vi.mocked(axios.post).mockResolvedValue({
+      data: {
+        status: 'DISPONIVEL',
+        records: 3,
+        bytes: 240,
+        collection: { competence: 'ATUAL', scope: 'Paraná', limitations: [], originals: [] },
+      },
+    })
+    const w = await setup()
+    for (const product of products)
+      expect(w.find(`button[data-product="${product}"]`).exists()).toBe(true)
+    await select(w, 'MMA')
+    expect(button(w, 'Coletar e validar').attributes('disabled')).toBeDefined()
+    expect(button(w, 'Verificar sem salvar').attributes('disabled')).toBeUndefined()
+    await button(w, 'Verificar sem salvar').trigger('click')
+    await flushPromises()
+    expect(axios.post).toHaveBeenCalledExactlyOnceWith('/fontes/conectores/MMA/verificacao', {
+      competence: 'ATUAL',
+    })
+    expect(w.text()).toContain('Download verificado')
+  })
+  it('accepts geospatial files in the picker and still rejects unsupported extensions', async () => {
+    const w = await setup('manual')
+    const picker = w.find('input[type="file"]')
+    const files = ['parana.zip', 'municipios.gpkg', 'imagem.tif', 'imagem.tiff'].map(
+      (name) => new File(['test'], name),
+    )
+    Object.defineProperty(picker.element, 'files', {
+      value: [...files, new File(['test'], 'programa.exe')],
+    })
+    await picker.trigger('change')
+    expect(w.findComponent(FileUploadList).props('modelValue')).toEqual(files)
+    expect(w.text()).toContain('programa.exe: formato não autorizado')
     expect(axios.post).not.toHaveBeenCalled()
   })
 })

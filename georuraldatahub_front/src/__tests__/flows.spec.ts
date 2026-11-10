@@ -279,6 +279,10 @@ describe('ingestion by source and session', () => {
       'csv',
       'geojson',
       'json',
+      'zip',
+      'gpkg',
+      'tif',
+      'tiff',
     ])
     expect(w.findComponent({ name: 'CollectionForm' }).exists()).toBe(false)
     expect(w.find('select[label="Responsável pela ingestão"]').exists()).toBe(false)

@@ -41,7 +41,8 @@
             <v-icon icon="mdi-file-upload-outline" size="40" color="primary" />
             <h3 class="text-h6 mt-3">Ingestão manual</h3>
             <p class="my-3">
-              Envie CSV ou GeoJSON (.geojson ou .json) e informe a fonte de origem dos dados.
+              Envie CSV, JSON/GeoJSON, Shapefile ZIP, GeoPackage ou GeoTIFF e informe a fonte de
+              origem dos dados.
             </p>
             <v-btn color="primary" :disabled="locked" @click="chooseMode('manual')"
               >Enviar meus arquivos</v-btn
@@ -121,7 +122,7 @@
             <div v-for="entry in otherConnectors" :key="entry.id" class="other-service">
               <strong>{{ entry.agency }} — {{ entry.product }}</strong
               ><span>{{
-                entry.access === 'MANUAL' ? 'Coleta manual' : 'Aguarda homologação'
+                entry.access === 'MANUAL' ? 'Coleta manual' : 'Não disponível nesta interface'
               }}</span>
               <p>{{ entry.limitations }}</p>
             </div>
@@ -225,7 +226,7 @@
                 >
               </div>
               <p class="governance-note">
-                Fontes e dicionários oficiais são gerenciados pelo Gestor.
+                O Gestor pode revisar e editar as regras dos dicionários.
               </p>
             </section>
             <CollectionForm
@@ -273,9 +274,15 @@
               <p>Selecione os arquivos que pertencem à mesma fonte de origem.</p>
             </div>
           </div>
+          <p class="text-body-2 mb-4">
+            Shapefile: envie um ZIP com uma única camada e seus arquivos auxiliares, incluindo o
+            CRS. GeoPackage: uma camada vetorial. GeoTIFF: metadados e cobertura; as células não são
+            convertidas em vetores. JSON tabular pode ser validado, mas exige geometria ou
+            coordenadas para exibição no mapa.
+          </p>
           <FileUploadList
             v-model="uploadedFiles"
-            :allowed-extensions="['csv', 'geojson', 'json']"
+            :allowed-extensions="['csv', 'geojson', 'json', 'zip', 'gpkg', 'tif', 'tiff']"
             :disabled="locked"
           />
           <div class="manual-guidance">
@@ -283,8 +290,8 @@
             <div>
               <strong>O conteúdo também será validado</strong>
               <p>
-                A extensão aceita não garante aprovação. Shapefile, GeoPackage e GeoTIFF não estão
-                disponíveis no envio manual.
+                A extensão aceita não garante aprovação. O arquivo inteiro precisa passar pelo
+                dicionário; qualquer falha envia o arquivo à quarentena.
               </p>
             </div>
           </div>
@@ -367,9 +374,7 @@
                 >Conferir novamente</v-btn
               >
             </div>
-            <p class="governance-note">
-              Fontes e dicionários oficiais são gerenciados pelo Gestor.
-            </p>
+            <p class="governance-note">O Gestor pode revisar e editar as regras dos dicionários.</p>
           </section>
 
           <section class="manual-review" aria-label="Revisão do envio">
@@ -469,12 +474,14 @@
     <ConfirmDialog
       v-model="showConfirm"
       title="Enviar e validar arquivos"
-      :message="`Enviar ${uploadedFiles.length} arquivo(s) para a fonte ${selectedSource?.name || 'selecionada'} com o usuário da sessão? Dicionário: ${dictionarySelectionSummary}. Apenas os registros aprovados ficarão disponíveis para tratamento e visualização.`"
+      :message="`Enviar ${uploadedFiles.length} arquivo(s) para a fonte ${selectedSource?.name || 'selecionada'} com o usuário da sessão? Dicionário: ${dictionarySelectionSummary}. A aprovação integral gera a versão TRATADA. Qualquer reprovação envia o arquivo inteiro à quarentena.`"
       @confirm="submitManual"
     />
   </div>
 </template>
 <script setup lang="ts">
+import { onDeactivated } from 'vue'
+import { usePageRefresh } from '@/composables/pageData'
 import { computed, onMounted, ref, watch } from 'vue'
 import axios from 'axios'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
@@ -489,8 +496,6 @@ import {
   type Connector,
   type Dictionary,
   type Source,
-import { onDeactivated } from 'vue'
-import { usePageRefresh } from '@/composables/pageData'
 } from '@/services/contracts'
 import { can, currentUserId as userId, sessionUser } from '@/access/session'
 import {
@@ -507,6 +512,13 @@ function serviceIcon(id: string) {
     IBGE_BIOMAS: 'mdi-forest-outline',
     INPE_PRODES: 'mdi-tree-outline',
     INPE_QUEIMADAS: 'mdi-fire',
+    ICMBIO: 'mdi-pine-tree',
+    ICMBIO_EMBARGOS: 'mdi-shield-alert-outline',
+    MMA: 'mdi-nature',
+    FUNAI: 'mdi-map-marker-outline',
+    INCRA: 'mdi-home-group',
+    SFB: 'mdi-forest-outline',
+    IBAMA: 'mdi-shield-alert-outline',
   }
   return icons[id] ?? 'mdi-cloud-download-outline'
 }
@@ -658,6 +670,13 @@ async function submitManual() {
   await loadDictionary()
 }
 onMounted(loadResources)
+usePageRefresh(async () => {
+  await loadResources()
+  await loadDictionary()
+})
+onDeactivated(() => {
+  showConfirm.value = false
+})
 </script>
 
 <style scoped>
@@ -691,13 +710,6 @@ onMounted(loadResources)
   gap: 24px;
   align-items: start;
 }
-usePageRefresh(async () => {
-  await loadResources()
-  await loadDictionary()
-})
-onDeactivated(() => {
-  showConfirm.value = false
-})
 .service-catalog {
   border: 1px solid var(--glass-outer-border);
   border-radius: 18px;

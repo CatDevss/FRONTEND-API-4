@@ -25,32 +25,45 @@
     <template v-if="selected">
       <div class="collection-fields">
         <v-select
-          v-if="product === 'IBGE_BIOMAS'"
+          v-if="currentProducts.includes(product)"
           v-model="competence"
-          :items="['2019', '2025']"
-          label="Edição"
-          hint="Escolha a edição disponibilizada pelo serviço."
+          :items="['ATUAL']"
+          label="Base atual"
+          hint="Retrato do serviço na data da coleta; sem histórico anual."
           persistent-hint
           variant="outlined"
           density="compact"
-          :disabled="busy"
+          :disabled="busy || verifying"
+        />
+        <v-select
+          v-else-if="product === 'IBGE_BIOMAS'"
+          v-model="competence"
+          :items="['2019', '2025']"
+          label="Edição"
+          variant="outlined"
+          density="compact"
+          :disabled="busy || verifying"
         />
         <v-text-field
           v-else
           v-model="competence"
           :type="product === 'INPE_QUEIMADAS' ? 'date' : 'text'"
           :label="
-            product === 'INPE_QUEIMADAS' ? 'Dia encerrado (AAAA-MM-DD)' : 'Ano publicado (AAAA)'
+            product === 'MMA'
+              ? 'Competência (ATUAL, AAAA ou AAAA-MM)'
+              : product === 'INPE_QUEIMADAS'
+                ? 'Dia encerrado (AAAA-MM-DD)'
+                : 'Ano publicado (AAAA)'
           "
           :hint="
-            product === 'INPE_QUEIMADAS'
-              ? 'Informe um dia já encerrado para consultar a coleta.'
-              : 'Informe o ano publicado pelo serviço oficial.'
+            product === 'MMA'
+              ? 'Um ano seleciona a última edição publicada daquele ano.'
+              : 'Consulte as edições publicadas ou informe a competência desejada.'
           "
           persistent-hint
           variant="outlined"
           density="compact"
-          :disabled="busy"
+          :disabled="busy || verifying"
         />
         <v-text-field
           v-if="product === 'IBGE_MUNICIPIOS'"
@@ -60,7 +73,7 @@
           persistent-hint
           variant="outlined"
           density="compact"
-          :disabled="busy"
+          :disabled="busy || verifying"
         />
         <template v-if="product === 'INPE_PRODES'">
           <v-select
@@ -69,22 +82,59 @@
             label="Bioma"
             variant="outlined"
             density="compact"
-            :disabled="busy"
+            :disabled="busy || verifying"
             hide-details="auto"
           />
-          <v-text-field
-            v-model="bbox"
-            label="Recorte geográfico (opcional)"
-            placeholder="Ex.: -54,-26,-50,-23"
-            hint="Ordem das coordenadas: oeste, sul, leste, norte."
-            persistent-hint
+        </template>
+        <v-text-field
+          v-if="bboxProducts.includes(product)"
+          v-model="bbox"
+          label="Recorte geográfico (opcional)"
+          placeholder="Ex.: -54,-26,-50,-23"
+          hint="Ordem das coordenadas: oeste, sul, leste, norte."
+          persistent-hint
+          variant="outlined"
+          density="compact"
+          :disabled="busy || verifying"
+          class="bbox-field"
+        />
+      </div>
+      <section class="my-4" aria-label="Edições publicadas">
+        <v-btn
+          variant="tonal"
+          size="small"
+          :loading="editionsLoading"
+          :disabled="busy || verifying || editionsLoading"
+          @click="loadEditions"
+          >Consultar edições publicadas</v-btn
+        >
+        <v-alert v-if="editionsError" type="warning" variant="tonal" class="mt-3" role="alert">{{
+          editionsError
+        }}</v-alert>
+        <template v-if="availability">
+          <p class="text-body-2 my-3">{{ availability.limitation }}</p>
+          <v-select
+            v-if="availability.editions.length"
+            v-model="competence"
+            :items="
+              availability.editions.map((e) => ({
+                title: `${e.competence} · ${e.description}`,
+                value: e.competence,
+              }))
+            "
+            label="Selecionar edição publicada"
             variant="outlined"
             density="compact"
-            :disabled="busy"
-            class="bbox-field"
+            :disabled="busy || verifying"
           />
+          <p v-else class="text-body-2">
+            Informe a competência e os filtros para verificar o conteúdo.
+          </p>
+          <p class="text-caption">
+            A publicação no catálogo não garante que o download esteja disponível.
+          </p>
         </template>
-      </div>
+      </section>
       <details class="collection-details">
         <summary>
           <v-icon icon="mdi-information-outline" size="15" /><span
@@ -98,6 +148,64 @@
         </p>
       </details>
     </template>
+    <section class="mb-5" aria-label="Verificação sem persistência">
+      <v-btn
+        variant="outlined"
+        :loading="verifying"
+        :disabled="
+          busy ||
+          verifying ||
+          !competence ||
+          isCollectionInProgress ||
+          isUploadInProgress
+        "
+        @click="verify"
+        >Verificar sem salvar</v-btn
+      >
+      <p class="text-caption mt-2">
+        Baixa e converte os dados, sem cadastrar fonte, arquivo ou versão. Pode demorar tanto quanto
+        uma coleta; não precisa de dicionário.
+      </p>
+      <v-alert
+        v-if="verification"
+        :type="verification.status === 'DISPONIVEL' ? 'success' : 'warning'"
+        variant="tonal"
+        class="mt-3"
+        role="status"
+      >
+        {{
+          verification.status === 'DISPONIVEL' ? 'Download verificado' : 'Sem registros no recorte'
+        }}: {{ verification.records }} registro(s),
+        {{ verification.bytes.toLocaleString('pt-BR') }} bytes.
+        <p>
+          Competência resolvida: {{ verification.collection.competence }} ·
+          {{ verification.collection.scope }}
+        </p>
+        <p v-for="limitation in verification.collection.limitations" :key="limitation">
+          {{ limitation }}
+        </p>
+        <details class="mt-3">
+          <summary>Originais consultados</summary>
+          <p class="text-caption">
+            Formato de origem: {{ verification.collection.originFormat }} · Formato convertido:
+            {{ verification.collection.format }} · Coletado em:
+            {{ verification.collection.collectedAt }}
+          </p>
+          <div
+            v-for="original in verification.collection.originals"
+            :key="original.sha256 + original.filename"
+            class="provenance my-3"
+          >
+            <strong>{{ original.filename }}</strong>
+            <p>{{ original.origin }}</p>
+            <p>{{ original.size.toLocaleString('pt-BR') }} bytes · {{ original.contentType }}</p>
+            <p>
+              SHA-256: <code>{{ original.sha256 }}</code>
+            </p>
+          </div>
+        </details>
+      </v-alert>
+    </section>
     <div class="collection-submit">
       <div class="execution-note">
         <v-icon :icon="busy ? 'mdi-cloud-sync-outline' : 'mdi-play-circle-outline'" size="18" />
@@ -111,7 +219,15 @@
       </div>
       <v-btn
         color="primary"
-        :disabled="!ready || !selected || !competence || busy"
+        :disabled="
+          !ready ||
+          !selected ||
+          !competence ||
+          busy ||
+          verifying ||
+          isCollectionInProgress ||
+          isUploadInProgress
+        "
         :loading="busy"
         prepend-icon="mdi-cloud-download-outline"
         @click="collect"
@@ -156,7 +272,14 @@
   </section>
 </template>
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import {
+  bboxProducts,
+  currentProducts,
+  collectionParameters,
+  type CollectionAvailability,
+  type CollectionVerification,
+} from '@/services/collection'
 import axios from 'axios'
 import { isCollectionInProgress, isUploadInProgress } from '@/composables/uploadLock'
 import {
@@ -183,7 +306,10 @@ const props = defineProps<{
   ready: boolean
   dictionaryId?: number | null
 }>()
-const emit = defineEmits<{ collected: []; busy: [value: boolean] }>()
+const emit = defineEmits<{
+  collected: []
+  busy: [value: boolean]
+}>()
 const busy = ref(false),
   error = ref('')
 const biomeOptions = [
@@ -191,14 +317,21 @@ const biomeOptions = [
   { title: 'Mata Atlântica', value: 'MATA_ATLANTICA' },
 ]
 const product = computed(() => props.connector.id)
-const competence = ref(''),
+const competence = ref(
+    currentProducts.includes(product.value) || product.value === 'MMA' ? 'ATUAL' : '',
+  ),
   municipality = ref(''),
   biome = ref(''),
   bbox = ref('')
 const result = ref<{ file: IngestedFile; collection: CollectionMetadata } | null>(null)
 const selected = computed(() => props.connector)
 watch(product, () => {
-  competence.value = ''
+  competence.value =
+    currentProducts.includes(product.value) || product.value === 'MMA' ? 'ATUAL' : ''
+  availability.value = null
+  editionsError.value = ''
+  editionsLoading.value = false
+  ++editionEpoch
   municipality.value = ''
   biome.value = ''
   bbox.value = ''
@@ -212,6 +345,90 @@ watch(
     error.value = ''
   },
 )
+const verifying = ref(false)
+const verification = ref<CollectionVerification | null>(null)
+const availability = ref<CollectionAvailability | null>(null)
+const editionsLoading = ref(false),
+  editionsError = ref('')
+let editionEpoch = 0,
+  verificationEpoch = 0
+watch(
+  [product, competence, municipality, biome, bbox],
+  () => {
+    verification.value = null
+    error.value = ''
+    ++verificationEpoch
+  },
+  { flush: 'sync' },
+)
+onBeforeUnmount(() => {
+  ++editionEpoch
+  ++verificationEpoch
+})
+async function loadEditions() {
+  if (editionsLoading.value || busy.value || verifying.value) return
+  const epoch = ++editionEpoch,
+    id = product.value
+  editionsLoading.value = true
+  editionsError.value = ''
+  availability.value = null
+  try {
+    const { data } = await axios.get<CollectionAvailability>(`/fontes/conectores/${id}/edicoes`)
+    if (epoch === editionEpoch) availability.value = data
+  } catch (e) {
+    if (epoch === editionEpoch)
+      editionsError.value = apiError(
+        e,
+        'Não foi possível consultar as edições. Tente novamente ou informe a competência.',
+      )
+  } finally {
+    if (epoch === editionEpoch) editionsLoading.value = false
+  }
+}
+async function verify() {
+  if (
+    !can('ingestion.run') ||
+    busy.value ||
+    verifying.value ||
+    isCollectionInProgress.value ||
+    isUploadInProgress.value
+  )
+    return
+  error.value = ''
+  verification.value = null
+  let body
+  try {
+    body = collectionParameters(
+      product.value,
+      competence.value,
+      municipality.value,
+      biome.value,
+      bbox.value,
+    )
+  } catch (e) {
+    error.value = (e as Error).message
+    return
+  }
+  const epoch = ++verificationEpoch,
+    actor = currentUserId.value
+  verifying.value = true
+  isCollectionInProgress.value = true
+  emit('busy', true)
+  try {
+    const { data } = await axios.post<CollectionVerification>(
+      `/fontes/conectores/${product.value}/verificacao`,
+      body,
+    )
+    if (epoch === verificationEpoch && actor === currentUserId.value) verification.value = data
+  } catch (e) {
+    if (epoch === verificationEpoch && actor === currentUserId.value)
+      error.value = apiError(e, 'Não foi possível verificar o conteúdo oficial.')
+  } finally {
+    verifying.value = false
+    isCollectionInProgress.value = false
+    emit('busy', false)
+  }
+}
 async function collect() {
   if (
     !can('ingestion.run') ||
@@ -220,6 +437,7 @@ async function collect() {
     !props.sourceId ||
     !props.userId ||
     busy.value ||
+    verifying.value ||
     isCollectionInProgress.value ||
     isUploadInProgress.value ||
     !sourceSupportsProduct(props.sourceUrl, product.value)
@@ -234,33 +452,23 @@ async function collect() {
     error.value = 'Selecione um dicionário válido.'
     return
   }
-  const body: Record<string, unknown> = {
-    product: product.value,
-    competence: competence.value.trim(),
-    userId: props.userId,
-    ...(props.dictionaryId != null ? { dictionaryId: props.dictionaryId } : {}),
-  }
-  if (product.value === 'IBGE_MUNICIPIOS' && municipality.value.trim()) {
-    if (!/^41\d{5}$/.test(municipality.value.trim())) {
-      error.value = 'Informe um código IBGE do Paraná válido.'
-      return
+  let body: Record<string, unknown>
+  try {
+    body = {
+      ...collectionParameters(
+        product.value,
+        competence.value,
+        municipality.value,
+        biome.value,
+        bbox.value,
+      ),
+      product: product.value,
+      userId: props.userId,
+      ...(props.dictionaryId != null ? { dictionaryId: props.dictionaryId } : {}),
     }
-    body.municipality = municipality.value.trim()
-  }
-  if (product.value === 'INPE_PRODES') {
-    if (!biome.value) {
-      error.value = 'Selecione o bioma.'
-      return
-    }
-    body.biome = biome.value
-    if (bbox.value.trim()) {
-      const coordinates = bbox.value.split(',').map((v) => (v.trim() ? Number(v) : NaN))
-      if (coordinates.length !== 4 || coordinates.some((v) => !Number.isFinite(v))) {
-        error.value = 'Informe quatro coordenadas numéricas.'
-        return
-      }
-      body.bbox = coordinates
-    }
+  } catch (e) {
+    error.value = (e as Error).message
+    return
   }
   busy.value = true
   isCollectionInProgress.value = true
@@ -306,6 +514,13 @@ async function collect() {
 }
 </script>
 <style scoped>
+.provenance {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 260px;
+  overflow: auto;
+  font-size: 11px;
+}
 .collection-panel {
   min-width: 0;
   border: 1px solid var(--glass-outer-border);
