@@ -245,7 +245,7 @@
                     />{{
                       file.layers.length
                         ? 'Prévia dos registros validados disponível no mapa.'
-                        : 'Sem referência de visualização disponível.'
+                        : 'Prévia indisponível. Consulte a validação na aba Arquivos.'
                     }}</span
                   >
                 </div>

@@ -145,7 +145,7 @@ describe('dataset library and management', () => {
   it('keeps files without layers, provenance and the workspace link visible', async () => {
     const w = await setup()
     await select(w, 7)
-    expect(w.find('.linked-file').text()).toContain('Sem referência de visualização disponível.')
+    expect(w.find('.linked-file').text()).toContain('Prévia indisponível. Consulte a validação na aba Arquivos.')
     expect(w.find('.linked-file').text()).toContain('Dicionário 10, versão 2 · Ingestão 5')
     expect(w.find('.detail-heading a').attributes('href')).toBe('/home?dataset=7')
     expect(w.find('.datasets-summary').text()).toContain('Arquivos no conjunto selecionado')

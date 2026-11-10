@@ -6,6 +6,7 @@
       :class="{
         'explorer-hidden': !explorerOpen,
         'showing-meters': workspace.activeTab === 'meters',
+        inspecting: !!inspection && workspace.activeTab === 'map',
       }"
     >
       <div class="map-surface">
@@ -14,6 +15,7 @@
           ref="mapView"
           :visible="workspace.activeTab === 'map'"
           :insets="overlayInsets"
+          @inspect="inspection = $event"
         />
       </div>
       <div class="workspace-overlays">
@@ -180,6 +182,13 @@
               </div>
             </div>
           </div>
+          <div
+            v-if="inspection && workspace.activeTab === 'map'"
+            ref="inspectionElement"
+            class="inspection-position"
+          >
+            <WorkspaceInspection :result="inspection" @close="mapView?.closeInspection()" />
+          </div>
           <section
             v-if="workspace.activeTab === 'meters'"
             class="meters-empty floating-panel"
@@ -236,8 +245,8 @@
           </div>
           <p class="validation-note floating-panel">
             <v-icon icon="mdi-information-outline" size="14" /><span
-              >Prévia dos registros aprovados pela validação. Não representa tratamento concluído ou
-              versão aprovada por um Gestor.</span
+              >Visualização dos arquivos integralmente aprovados pelo dicionário (TRATADA). A
+              publicação é uma etapa separada da validação.</span
             >
           </p>
         </footer>
@@ -263,6 +272,7 @@ import {
   onBeforeUnmount,
   onMounted,
   ref,
+  shallowRef,
   watch,
 } from 'vue'
 import { useRoute } from 'vue-router'
@@ -270,6 +280,8 @@ import { can } from '@/access/session'
 import { useWorkspaceStore } from '@/stores/workspace'
 import WorkspaceExplorer from '@/components/workspace/WorkspaceExplorer.vue'
 import WorkspaceMap from '@/components/workspace/WorkspaceMap.vue'
+import WorkspaceInspection from '@/components/workspace/WorkspaceInspection.vue'
+import type { MapInspection } from '@/services/mapInspection'
 import WorkspaceFilesDialog from '@/components/workspace/WorkspaceFilesDialog.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 const workspace = useWorkspaceStore(),
@@ -283,6 +295,8 @@ const workspaceElement = ref<HTMLElement | null>(null),
   explorerElement = ref<HTMLElement | null>(null),
   footerElement = ref<HTMLElement | null>(null)
 const overlayInsets = ref({ top: 0, right: 0, bottom: 0, left: 0 })
+const inspection = shallowRef<MapInspection | null>(null)
+const inspectionElement = ref<HTMLElement | null>(null)
 const loadingLayers = computed(
   () => Object.values(workspace.runtime).filter((layer) => layer.loading).length,
 )
@@ -297,26 +311,39 @@ const layerFailures = computed(() =>
     })),
 )
 let overlayObserver: ResizeObserver | null = null
+let visiblePage = true
 function measureOverlays() {
+  if (!visiblePage) return
   const area = workspaceElement.value?.getBoundingClientRect()
   if (!area?.width || !area.height) return
   const toolbar = toolbarElement.value?.getBoundingClientRect(),
     footer = footerElement.value?.getBoundingClientRect(),
-    explorer = explorerOpen.value ? explorerElement.value?.getBoundingClientRect() : null
+    explorer = explorerOpen.value ? explorerElement.value?.getBoundingClientRect() : null,
+    inspector = inspectionElement.value?.getBoundingClientRect()
   const bottomPanel = explorer && explorer.width > area.width * 0.65
   overlayInsets.value = {
     top: toolbar ? Math.max(0, toolbar.bottom - area.top) : 0,
-    right: 64,
+    right: inspector && area.width > 760 ? Math.max(64, area.right - inspector.left) : 64,
     left: explorer && !bottomPanel ? Math.max(0, explorer.right - area.left) : 0,
-    bottom: bottomPanel
-      ? Math.max(0, area.bottom - explorer.top)
-      : footer
-let visiblePage = true
-        ? Math.max(0, area.bottom - footer.top)
-  if (!visiblePage) return
-        : 0,
+    bottom:
+      inspector && area.width <= 760
+        ? Math.max(0, area.bottom - inspector.top)
+        : bottomPanel
+          ? Math.max(0, area.bottom - explorer.top)
+          : footer
+            ? Math.max(0, area.bottom - footer.top)
+            : 0,
   }
 }
+watch(
+  inspectionElement,
+  (element, previous) => {
+    if (previous) overlayObserver?.unobserve(previous)
+    if (element) overlayObserver?.observe(element)
+    measureOverlays()
+  },
+  { flush: 'post' },
+)
 async function retryWorkspace() {
   await workspace.loadDatasets()
   await workspace.refresh()
@@ -343,6 +370,24 @@ watch(
     removal.value = null
   },
 )
+watch(
+  () => [route.path, route.query.dataset],
+  ([path, value]) => {
+    if (path !== '/home') return
+    const requested = Number(value)
+    if (
+      Number.isInteger(requested) &&
+      requested !== workspace.selectedDatasetId &&
+      workspace.datasets.some((d) => d.id === requested)
+    )
+      void workspace.selectDataset(requested)
+  },
+)
+onActivated(async () => {
+  visiblePage = true
+  await nextTick()
+  measureOverlays()
+})
 onBeforeMount(() => workspace.invalidate())
 onMounted(async () => {
   if (typeof ResizeObserver !== 'undefined') {
@@ -367,27 +412,15 @@ onBeforeUnmount(() => {
   overlayObserver?.disconnect()
   window.removeEventListener('resize', measureOverlays)
 })
+usePageRefresh(retryWorkspace)
+onDeactivated(() => {
+  visiblePage = false
+  showFiles.value = false
+  showRemoval.value = false
+})
 </script>
 <style scoped>
 .workspace-page {
-watch(
-  () => [route.path, route.query.dataset],
-  ([path, value]) => {
-    if (path !== '/home') return
-    const requested = Number(value)
-    if (
-      Number.isInteger(requested) &&
-      requested !== workspace.selectedDatasetId &&
-      workspace.datasets.some((d) => d.id === requested)
-    )
-      void workspace.selectDataset(requested)
-  },
-)
-onActivated(async () => {
-  visiblePage = true
-  await nextTick()
-  measureOverlays()
-})
   width: 100%;
   flex: 1;
   min-height: 0;
@@ -412,12 +445,6 @@ onActivated(async () => {
   height: 100%;
 }
 .workspace-overlays {
-usePageRefresh(retryWorkspace)
-onDeactivated(() => {
-  visiblePage = false
-  showFiles.value = false
-  showRemoval.value = false
-})
   position: relative;
   z-index: 2;
   height: 100%;
@@ -538,6 +565,13 @@ onDeactivated(() => {
   overflow: auto;
   border-radius: 18px;
   scrollbar-width: thin;
+  pointer-events: auto;
+}
+.inspection-position {
+  width: min(100%, 390px);
+  min-height: 0;
+  max-height: 100%;
+  display: flex;
   pointer-events: auto;
 }
 .workspace-messages:empty {
@@ -673,6 +707,16 @@ onDeactivated(() => {
   }
 }
 @container (max-width: 760px) {
+  .inspecting .explorer-position {
+    display: none;
+  }
+  .inspecting .workspace-content {
+    justify-content: flex-end;
+  }
+  .inspection-position {
+    max-height: 55%;
+    flex-shrink: 0;
+  }
   .workspace-overlays {
     padding: 12px 12px 36px;
     gap: 10px;

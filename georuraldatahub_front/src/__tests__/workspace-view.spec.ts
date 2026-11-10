@@ -23,10 +23,15 @@ const Tabs = defineComponent({
 const mapCalls = { mount: vi.fn(), unmount: vi.fn(), fit: vi.fn(), reset: vi.fn() }
 const MapSurface = defineComponent({
   props: ['visible', 'insets'],
-  setup(_, { expose }) {
+  emits: ['inspect'],
+  setup(_, { expose, emit }) {
     onMounted(mapCalls.mount)
     onBeforeUnmount(mapCalls.unmount)
-    expose({ fitVisibleLayers: mapCalls.fit, resetView: mapCalls.reset })
+    expose({
+      fitVisibleLayers: mapCalls.fit,
+      resetView: mapCalls.reset,
+      closeInspection: () => emit('inspect', null),
+    })
   },
   template: '<div class="test-map" />',
 })
@@ -121,6 +126,37 @@ beforeEach(() => {
   setSessionUser({ id: 1, name: 'Operador', userType: 'OPERADOR', userStatus: 1 })
 })
 describe('workspace explorer and tabs', () => {
+  it('opens the side panel from a map selection and closes it without remounting the map', async () => {
+    const { wrapper } = await setup()
+    const map = wrapper.findComponent(MapSurface)
+    map.vm.$emit('inspect', {
+      latitude: -25,
+      longitude: -49,
+      groups: [
+        {
+          fileId: 11,
+          name: 'Biomas',
+          color: '#FF8A1F',
+          features: [{ type: 'Feature', geometry: null, properties: { bioma: 'Mata Atlântica' } }],
+        },
+        {
+          fileId: 12,
+          name: 'Províncias',
+          color: '#00D5FF',
+          features: [{ type: 'Feature', geometry: null, properties: { provincia: 'Paraná' } }],
+        },
+      ],
+      pending: [],
+      failed: [],
+    })
+    await flushPromises()
+    expect(wrapper.find('.inspection-position').text()).toContain('Mata Atlântica')
+    expect(wrapper.find('.inspection-position').text()).toContain('Paraná')
+    await wrapper.get('button[aria-label="Fechar informações do local"]').trigger('click')
+    expect(wrapper.find('.inspection-position').exists()).toBe(false)
+    expect(mapCalls.mount).toHaveBeenCalledOnce()
+  })
+
   it('shows dataset → source → file → layer and keeps files with no layer in the explorer', async () => {
     const { wrapper, workspace } = await setup()
     expect(wrapper.find('.dataset-row').text()).toBe('Paraná integrado')
@@ -128,7 +164,7 @@ describe('workspace explorer and tabs', () => {
     expect(wrapper.findAll('details.file-node')).toHaveLength(2)
     expect(wrapper.text()).toContain('dados_sem_geometria.csv')
     expect(wrapper.find('.layer-name').text()).toBe('Feições municipais')
-    expect(wrapper.text()).toContain('Sem referência de visualização')
+    expect(wrapper.text()).toContain('Prévia indisponível')
     await wrapper.find('input[type="checkbox"]').setValue(true)
     expect(workspace.isVisible(11)).toBe(true)
   })
