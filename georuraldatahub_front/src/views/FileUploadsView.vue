@@ -362,6 +362,8 @@ import { can } from '@/access/session'
 import axios from 'axios'
 import ValidationResult from '@/components/ValidationResult.vue'
 import {
+import { onDeactivated } from 'vue'
+import { usePageRefresh } from '@/composables/pageData'
   quarantineClosed,
   quarantineStatus,
   type QuarantinePage,
@@ -712,3 +714,8 @@ onBeforeUnmount(() => {
 <style scoped>
 @import '@/assets/fileuploads.css';
 </style>
+usePageRefresh(fetchAll)
+onDeactivated(() => {
+  metadataDialog.value = false
+  reportDialog.value = false
+})

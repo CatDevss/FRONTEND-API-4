@@ -397,6 +397,8 @@
   </div>
 </template>
 <script setup lang="ts">
+import { onDeactivated } from 'vue'
+import { usePageRefresh } from '@/composables/pageData'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import axios from 'axios'
 import { can, currentUserId } from '@/access/session'
@@ -646,6 +648,12 @@ onBeforeUnmount(() => {
   ++structureEpoch
   ++filesEpoch
   ++sourcesEpoch
+})
+usePageRefresh(load)
+onDeactivated(() => {
+  showCreate.value = false
+  showDelete.value = false
+  showFiles.value = false
 })
 </script>
 <style scoped>

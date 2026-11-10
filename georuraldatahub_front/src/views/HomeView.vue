@@ -253,7 +253,18 @@
   </div>
 </template>
 <script setup lang="ts">
-import { computed, nextTick, onBeforeMount, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { onDeactivated } from 'vue'
+import { usePageRefresh } from '@/composables/pageData'
+import {
+  computed,
+  nextTick,
+  onActivated,
+  onBeforeMount,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+} from 'vue'
 import { useRoute } from 'vue-router'
 import { can } from '@/access/session'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -300,7 +311,9 @@ function measureOverlays() {
     bottom: bottomPanel
       ? Math.max(0, area.bottom - explorer.top)
       : footer
+let visiblePage = true
         ? Math.max(0, area.bottom - footer.top)
+  if (!visiblePage) return
         : 0,
   }
 }
@@ -357,6 +370,24 @@ onBeforeUnmount(() => {
 </script>
 <style scoped>
 .workspace-page {
+watch(
+  () => [route.path, route.query.dataset],
+  ([path, value]) => {
+    if (path !== '/home') return
+    const requested = Number(value)
+    if (
+      Number.isInteger(requested) &&
+      requested !== workspace.selectedDatasetId &&
+      workspace.datasets.some((d) => d.id === requested)
+    )
+      void workspace.selectDataset(requested)
+  },
+)
+onActivated(async () => {
+  visiblePage = true
+  await nextTick()
+  measureOverlays()
+})
   width: 100%;
   flex: 1;
   min-height: 0;
@@ -381,6 +412,12 @@ onBeforeUnmount(() => {
   height: 100%;
 }
 .workspace-overlays {
+usePageRefresh(retryWorkspace)
+onDeactivated(() => {
+  visiblePage = false
+  showFiles.value = false
+  showRemoval.value = false
+})
   position: relative;
   z-index: 2;
   height: 100%;

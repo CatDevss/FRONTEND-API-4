@@ -4,11 +4,13 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import vuetify from './plugins/vuetify'
 import axios from 'axios'
+import { trackDataMutation } from '@/composables/pageData'
 import App from './App.vue'
 import router from './router'
 import './assets/glassmorphism.css'
 
 axios.defaults.baseURL = import.meta.env.VITE_API_BASE_URL
+axios.interceptors.response.use(trackDataMutation)
 console.log('API base URL:', axios.defaults.baseURL)
 const app = createApp(App)
 

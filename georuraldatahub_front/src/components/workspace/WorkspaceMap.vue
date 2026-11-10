@@ -16,7 +16,7 @@
   </div>
 </template>
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { nextTick, onActivated, onDeactivated, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import axios from 'axios'
 import L from 'leaflet'
 import type { Feature, FeatureCollection } from 'geojson'
@@ -182,7 +182,7 @@ function resetView() {
   map?.fitBounds(parana, visiblePadding())
 }
 function resize() {
-  map?.invalidateSize()
+  if (active) map?.invalidateSize()
 }
 watch(() => workspace.revision, clear, { flush: 'sync' })
 watch(
@@ -252,6 +252,7 @@ defineExpose({ fitVisibleLayers, resetView })
 }
 .map-canvas {
   width: 100%;
+let active = true
   height: 100%;
   min-height: 0;
   background: rgb(var(--v-theme-background));
@@ -313,6 +314,14 @@ defineExpose({ fitVisibleLayers, resetView })
 }
 .map-shell :deep(.leaflet-control-layers label) {
   line-height: 2;
+onActivated(async () => {
+  active = true
+  await nextTick()
+  resize()
+})
+onDeactivated(() => {
+  active = false
+})
   font-family: inherit;
   accent-color: rgb(var(--v-theme-primary));
 }

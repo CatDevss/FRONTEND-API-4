@@ -325,6 +325,8 @@
   </div>
 </template>
 <script setup lang="ts">
+import { onDeactivated } from 'vue'
+import { usePageRefresh } from '@/composables/pageData'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, onBeforeRouteLeave } from 'vue-router'
 import axios from 'axios'
@@ -423,6 +425,10 @@ watch(discardDialog, (open) => {
 if (route)
   onBeforeRouteLeave(() => {
     if (busy.value) return false
+  if (leaveDecision) {
+    if (selectedDictionary.value) open(selectedDictionary.value, true)
+    else closeEditor()
+  }
     if (!dirty.value) return true
     discardDialog.value = true
     return new Promise<boolean>((resolve) => {
@@ -440,8 +446,9 @@ watch(sourceId, () => {
   void load()
 })
 watch(
-  () => route?.query?.source,
-  (value) => {
+  () => [route?.path, route?.query?.source],
+  ([path, value]) => {
+    if (path !== '/dictionaries') return
     const id = Number(value)
     if (sources.value.some((s) => s.id === id) && id !== sourceId.value) requestSource(id)
   },
@@ -645,6 +652,14 @@ async function remove() {
   border-radius: 16px;
   background: rgba(var(--v-theme-surface), 0.45);
   overflow: hidden;
+usePageRefresh(async () => {
+  await loadSources()
+  if (sourceId.value) await load(editingId.value, dirty.value)
+})
+onDeactivated(() => {
+  deleteDialog.value = false
+  discardDialog.value = false
+})
 }
 .dictionary-sidebar {
   padding: 20px 16px;

@@ -127,7 +127,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { usePageRefresh } from '@/composables/pageData'
+import { computed, onDeactivated, onMounted, ref } from 'vue'
 import axios from 'axios'
 import DataSourceDialog from '@/components/DataSourceDialog.vue'
 import { can, currentUserId } from '@/access/session'
@@ -270,6 +271,8 @@ async function toggleStatus(source: Source) {
 }
 
 onMounted(load)
+usePageRefresh(load)
+onDeactivated(() => { dialog.value = false })
 </script>
 
 <style scoped>

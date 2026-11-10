@@ -489,6 +489,8 @@ import {
   type Connector,
   type Dictionary,
   type Source,
+import { onDeactivated } from 'vue'
+import { usePageRefresh } from '@/composables/pageData'
 } from '@/services/contracts'
 import { can, currentUserId as userId, sessionUser } from '@/access/session'
 import {
@@ -689,6 +691,13 @@ onMounted(loadResources)
   gap: 24px;
   align-items: start;
 }
+usePageRefresh(async () => {
+  await loadResources()
+  await loadDictionary()
+})
+onDeactivated(() => {
+  showConfirm.value = false
+})
 .service-catalog {
   border: 1px solid var(--glass-outer-border);
   border-radius: 18px;

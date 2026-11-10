@@ -87,7 +87,7 @@
           compact
           :class="{ 'mb-5': $route.name !== 'home' }"
         />
-        <RouterView :key="`${sessionUser?.id}-${sessionUser?.userType}`" />
+        <PageOutlet />
       </v-container>
     </v-main>
 
@@ -98,6 +98,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import DevelopmentSession from '@/components/DevelopmentSession.vue'
+import PageOutlet from '@/components/PageOutlet.vue'
 import IngestionProgressPopup from '@/components/IngestionProgressPopup.vue'
 import { clearIngestionProgress } from '@/composables/ingestionProgress'
 import { selectPreviewUser } from '@/access/developmentSession'
