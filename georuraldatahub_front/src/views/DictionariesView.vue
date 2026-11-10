@@ -100,6 +100,12 @@
           success
         }}</v-alert>
         <template v-if="editorOpen">
+          <DictionaryTemplate
+            v-if="!readonly && selectedSource"
+            :source-url="selectedSource.url"
+            :disabled="busy"
+            @apply="(draft) => requestAction(() => applyTemplate(draft))"
+          />
           <div class="editor-heading">
             <div>
               <p class="eyebrow">{{ selectedSource?.name }}</p>
@@ -182,22 +188,18 @@
                 Use o nome exato da coluna do CSV ou do atributo do GeoJSON.
               </p>
             </div>
-            <v-btn
-              v-if="!readonly"
-              variant="tonal"
-              size="small"
-              prepend-icon="mdi-plus"
-              :disabled="busy"
-              @click="addRule"
-              >Adicionar campo</v-btn
-            >
           </div>
-          <div class="rules-table">
+          <div ref="rulesTable" class="rules-table">
             <div class="rule-table-header" aria-hidden="true">
               <span>Nome do campo</span><span>Tipo de dado</span><span>Restrições</span
               ><span>Valores permitidos</span><span />
             </div>
-            <div v-for="(rule, i) in rules" :key="rule.key" class="rule-row">
+            <div
+              v-for="(rule, i) in rules"
+              :key="rule.key"
+              :data-rule-key="rule.key"
+              class="rule-row"
+            >
               <v-text-field
                 v-model="rule.name"
                 label="Campo"
@@ -268,6 +270,16 @@
               Adicione pelo menos um campo para salvar o dicionário.
             </p>
           </div>
+          <v-btn
+            v-if="!readonly"
+            class="mt-3"
+            block
+            variant="tonal"
+            prepend-icon="mdi-plus"
+            :disabled="busy"
+            @click="addRuleAndFocus"
+            >Adicionar campo</v-btn
+          >
           <footer class="editor-footer">
             <p class="text-caption text-medium-emphasis">
               A maior versão da fonte é usada automaticamente nas próximas ingestões, inclusive como
@@ -327,11 +339,12 @@
 <script setup lang="ts">
 import { onDeactivated } from 'vue'
 import { usePageRefresh } from '@/composables/pageData'
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, onBeforeRouteLeave } from 'vue-router'
 import axios from 'axios'
 import { can } from '@/access/session'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import DictionaryTemplate, { type DictionaryDraft } from '@/components/DictionaryTemplate.vue'
 import {
   apiError,
   fieldTypes,
@@ -360,6 +373,7 @@ const readonly = ref(true),
 const selectedDictionary = computed(() => dictionaries.value.find((d) => d.id === editingId.value))
 const selectedSource = computed(() => sources.value.find((s) => s.id === sourceId.value))
 const latest = computed(() => dictionaries.value[0])
+const rulesTable = ref<HTMLElement | null>(null)
 const name = ref(''),
   description = ref(''),
   rules = ref<EditorRule[]>([]),
@@ -411,6 +425,10 @@ function discard() {
   baseline.value = JSON.stringify(body())
   pendingAction?.()
   pendingAction = null
+  if (leaveDecision) {
+    if (selectedDictionary.value) open(selectedDictionary.value, true)
+    else closeEditor()
+  }
   leaveDecision?.(true)
   leaveDecision = null
 }
@@ -425,10 +443,6 @@ watch(discardDialog, (open) => {
 if (route)
   onBeforeRouteLeave(() => {
     if (busy.value) return false
-  if (leaveDecision) {
-    if (selectedDictionary.value) open(selectedDictionary.value, true)
-    else closeEditor()
-  }
     if (!dirty.value) return true
     discardDialog.value = true
     return new Promise<boolean>((resolve) => {
@@ -500,14 +514,36 @@ function refresh() {
   })
 }
 function addRule() {
+  const key = ++nextRuleKey
   rules.value.push({
-    key: ++nextRuleKey,
+    key,
     name: '',
     type: 'STRING',
     required: false,
     unique: false,
     domain: [],
   })
+  return key
+}
+async function addRuleAndFocus() {
+  if (!can('dictionaries.manage') || readonly.value || busy.value) return
+  const key = addRule()
+  await nextTick()
+  if (!editorOpen.value || readonly.value || busy.value) return
+  const row = rulesTable.value?.querySelector<HTMLElement>(`[data-rule-key="${key}"]`)
+  row?.querySelector<HTMLInputElement>('input')?.focus({ preventScroll: true })
+  row?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+}
+function applyTemplate(draft: DictionaryDraft) {
+  if (!can('dictionaries.manage') || readonly.value || busy.value) return
+  name.value = draft.name
+  description.value = draft.description ?? ''
+  rules.value = draft.rules.map((rule) => ({
+    ...rule,
+    domain: [...rule.domain],
+    key: ++nextRuleKey,
+  }))
+  editorError.value = ''
 }
 function create() {
   if (!can('dictionaries.manage') || !sourceId.value || busy.value) return
@@ -616,6 +652,14 @@ async function remove() {
     deleteTarget.value = null
   }
 }
+usePageRefresh(async () => {
+  await loadSources()
+  if (sourceId.value) await load(editingId.value, dirty.value)
+})
+onDeactivated(() => {
+  deleteDialog.value = false
+  discardDialog.value = false
+})
 </script>
 <style scoped>
 .dictionary-page {
@@ -652,14 +696,6 @@ async function remove() {
   border-radius: 16px;
   background: rgba(var(--v-theme-surface), 0.45);
   overflow: hidden;
-usePageRefresh(async () => {
-  await loadSources()
-  if (sourceId.value) await load(editingId.value, dirty.value)
-})
-onDeactivated(() => {
-  deleteDialog.value = false
-  discardDialog.value = false
-})
 }
 .dictionary-sidebar {
   padding: 20px 16px;
