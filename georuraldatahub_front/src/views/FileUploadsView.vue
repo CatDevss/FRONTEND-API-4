@@ -449,7 +449,7 @@ const files = ref<(IngestedFile & { sourceId: number; sourceName: string })[]>([
 let epoch = 0
 
 // A etapa atual vem de /arquivos/etapas; ocorrências de quarentena são independentes dela.
-// Rótulo, ícone e descrição de cada etapa, na ordem do fluxo.
+
 const stageInfo: Record<VersionStatus, { label: string; icon: string; hint: string }> = {
   BRUTA: {
     label: 'Bruta',
@@ -480,7 +480,7 @@ const stagesLoaded = ref(false),
 const quarantines = ref<Record<number, QuarantineRecord[]>>({})
 const quarantinesLoaded = ref(false),
   quarantinesError = ref('')
-// Etapa escolhida nos cards para filtrar a tabela (null = todas).
+
 const stageFilter = ref<VersionStatus | null>(null)
 function toggleStage(status: VersionStatus) {
   stageFilter.value = stageFilter.value === status ? null : status
@@ -608,7 +608,7 @@ function normalize(value: string) {
     .replace(/[\u0300-\u036f]/g, '')
     .toLocaleLowerCase('pt-BR')
 }
-// Selo da etapa de um arquivo: texto, chave de cor e dica (versão e local no bucket).
+
 function flowStatus(fileId: number) {
   const legacy = legacyFlows.value[fileId]
   return legacy ? legacy.status : stages.value[fileId]?.status

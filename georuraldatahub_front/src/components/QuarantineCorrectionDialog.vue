@@ -190,8 +190,9 @@ function setDraft(entry: RejectedRecord, value: string) {
   drafts.value = { ...drafts.value, [entry.recordIndex]: value ?? '' }
 }
 function restore(entry: RejectedRecord) {
-  const { [entry.recordIndex]: _discarded, ...rest } = drafts.value
-  drafts.value = rest
+  const remaining = { ...drafts.value }
+  delete remaining[entry.recordIndex]
+  drafts.value = remaining
 }
 function ownerColor(owner: ErrorOwner) {
   return owner === 'manager' ? 'warning' : owner === 'file' ? 'error' : 'primary'

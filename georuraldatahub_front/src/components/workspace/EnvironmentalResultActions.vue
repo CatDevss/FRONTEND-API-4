@@ -6,6 +6,7 @@
     ><v-btn
       color="primary"
       variant="tonal"
+      v-if="['icv', 'irl', 'iapp', 'isap', 'iae', 'idesmat', 'ifc'].includes(snapshot.indicator)"
       prepend-icon="mdi-map-outline"
       :loading="mapping"
       @click="showMap"

@@ -1,8 +1,7 @@
 <template>
-  <section class="indicators-panel" aria-label="Indicadores ambientais">
+  <section ref="panelElement" class="indicators-panel" aria-label="Indicadores ambientais">
     <header>
-      <span class="eyebrow">ANÁLISE AMBIENTAL</span>
-      <h2>Medidores</h2>
+      <h2>Indicadores ambientais</h2>
       <p>Escolha a área, informe os dados e consulte o resultado.</p>
       <v-btn
         variant="text"
@@ -12,179 +11,219 @@
         >Gerenciar camadas</v-btn
       >
     </header>
-    <nav class="steps" aria-label="Etapas da análise">
-      <v-btn :variant="step === 1 ? 'tonal' : 'text'" :disabled="busy" @click="step = 1"
-        >1 · Área</v-btn
-      >
+    <div class="view-switch">
       <v-btn
-        :variant="step === 2 ? 'tonal' : 'text'"
-        :disabled="!featureId || busy"
-        @click="step = 2"
-        >2 · Dados</v-btn
-      >
-      <v-btn :variant="step === 3 ? 'tonal' : 'text'" :disabled="!result || busy" @click="step = 3"
-        >3 · Resultado</v-btn
-      >
-    </nav>
-    <div v-show="step === 1">
-      <v-select
-        v-model="indicator"
-        :items="indicators"
-        item-title="name"
-        item-value="id"
-        label="Indicador"
+        :variant="view === 'calculate' ? 'tonal' : 'text'"
         :disabled="busy"
-      />
-      <EnvironmentalLayerPicker
-        v-model="areaLayer"
-        label="Camada da área de análise"
-        polygon
+        @click="view = 'calculate'"
+        >Cálculo</v-btn
+      ><v-btn
+        prepend-icon="mdi-history"
+        :variant="view === 'history' ? 'tonal' : 'text'"
         :disabled="busy"
-        @layers="remember"
-      />
-      <template v-if="areaLayer">
-        <div class="search-row">
-          <v-text-field
-            v-model="query"
-            label="Buscar município, imóvel ou bioma"
-            hide-details
-            :disabled="busy"
-            @keyup.enter="searchFeatures(0)"
-          /><v-btn variant="tonal" :loading="searching" :disabled="busy" @click="searchFeatures(0)"
-            >Buscar</v-btn
-          >
-        </div>
-        <details class="advanced">
-          <summary>Ajustar campo do nome</summary>
-          <v-select
-            v-model="field"
-            :items="fields"
-            label="Campo usado como nome"
-            clearable
-            hint="Automático quando vazio. Os campos disponíveis vêm de uma amostra da camada."
-            persistent-hint
-            :disabled="busy"
-          />
-        </details>
+        @click="view = 'history'"
+        >Histórico</v-btn
+      >
+    </div>
+    <EnvironmentalHistory v-if="view === 'history'" />
+    <div v-show="view === 'calculate'">
+      <nav class="steps" aria-label="Etapas da análise">
+        <v-btn :variant="step === 1 ? 'tonal' : 'text'" :disabled="busy" @click="step = 1"
+          >1 · Área</v-btn
+        >
+        <v-btn
+          :variant="step === 2 ? 'tonal' : 'text'"
+          :disabled="!featureId || busy"
+          @click="step = 2"
+          >2 · Dados</v-btn
+        >
+        <v-btn
+          :variant="step === 3 ? 'tonal' : 'text'"
+          :disabled="!result || busy"
+          @click="step = 3"
+          >3 · Resultado</v-btn
+        >
+      </nav>
+      <div v-show="step === 1" class="form-step">
         <v-select
-          v-model="featureId"
-          :items="features"
+          v-model="indicator"
+          :items="indicators"
           item-title="name"
           item-value="id"
-          label="Feição da área de análise"
-          :loading="searching"
+          label="Indicador"
           :disabled="busy"
-          no-data-text="Nenhuma feição poligonal nesta busca"
         />
-        <div class="pages">
-          <v-btn
-            variant="text"
-            :disabled="featurePage === 0 || searching || busy"
-            @click="searchFeatures(featurePage - 1)"
-            >Anterior</v-btn
-          ><span>{{ featureTotal }} feição(ões) · página {{ featurePage + 1 }}</span
-          ><v-btn
-            variant="text"
-            :disabled="(featurePage + 1) * 20 >= featureTotal || searching || busy"
-            @click="searchFeatures(featurePage + 1)"
-            >Próxima</v-btn
+        <EnvironmentalLayerPicker
+          v-model="areaLayer"
+          label="Onde está a área que você quer analisar?"
+          polygon
+          :disabled="busy"
+          @layers="remember"
+        />
+        <template v-if="areaLayer">
+          <details class="advanced">
+            <summary>Ajustar campo do nome</summary>
+            <v-select
+              v-model="field"
+              :items="fields"
+              label="Campo usado como nome"
+              clearable
+              hint="Automático quando vazio. Os campos disponíveis vêm de uma amostra da camada."
+              persistent-hint
+              :disabled="busy"
+            />
+          </details>
+          <v-autocomplete
+            v-model="featureId"
+            :items="featureOptions"
+            item-title="name"
+            item-value="id"
+            label="Buscar município, imóvel ou bioma"
+            no-filter
+            clearable
+            :loading="searching"
+            :disabled="busy"
+            no-data-text="Nenhuma área encontrada"
+            @update:search="featureSearchChanged"
+          >
+            <template #append-item
+              ><div class="pages" @mousedown.prevent>
+                <v-btn
+                  variant="text"
+                  size="small"
+                  :disabled="featurePage === 0 || searching"
+                  @click.stop="searchFeatures(featurePage - 1)"
+                  >Anterior</v-btn
+                ><span>{{ featureTotal }} áreas</span
+                ><v-btn
+                  variant="text"
+                  size="small"
+                  :disabled="(featurePage + 1) * 20 >= featureTotal || searching"
+                  @click.stop="searchFeatures(featurePage + 1)"
+                  >Próxima</v-btn
+                >
+              </div></template
+            >
+          </v-autocomplete>
+        </template>
+        <v-alert v-if="error" type="error" class="mb-4">{{ error }}</v-alert>
+        <v-btn color="primary" :disabled="!featureId || searching" @click="step = 2"
+          >Continuar</v-btn
+        >
+      </div>
+      <div v-show="step === 2" class="form-step">
+        <p class="note">
+          <strong>{{ selected.name }}</strong> ·
+          {{ featureOptions.find((f) => f.id === featureId)?.name }}
+        </p>
+        <p class="note">
+          Selecione camadas cujo conteúdo corresponda a cada papel. O nome do arquivo não determina
+          seu uso.
+        </p>
+        <EnvironmentalLayerPicker
+          v-for="role in selected.roles"
+          :key="role"
+          :model-value="inputs[role] ?? []"
+          :label="roleNames[role] ?? role"
+          multiple
+          :disabled="busy"
+          @update:model-value="inputs[role] = Array.isArray($event) ? $event : []"
+          @layers="remember"
+        />
+        <template v-if="indicator === 'irl'"
+          ><v-text-field
+            v-model.number="minimum"
+            type="number"
+            min="0"
+            max="100"
+            label="Percentual mínimo de reserva legal (%)"
+            :disabled="busy" /><v-textarea
+            v-model="reason"
+            label="Fundamento do percentual adotado"
+            rows="2"
+            :disabled="busy"
+        /></template>
+        <v-text-field
+          v-if="indicator === 'ifc'"
+          v-model="start"
+          type="date"
+          label="Data inicial"
+          :disabled="busy"
+        />
+        <v-text-field
+          v-if="indicator === 'ifc' || indicator === 'idesmat'"
+          v-model="end"
+          type="date"
+          label="Data final (inclusiva)"
+          :disabled="busy"
+        />
+        <v-alert v-if="error" type="error" class="mb-4">{{ error }}</v-alert>
+        <div class="calculation-actions">
+          <v-btn color="primary" :loading="busy" :disabled="!valid || searching" @click="run(true)"
+            >Calcular e salvar</v-btn
+          >
+          <v-btn variant="text" :disabled="!valid || searching || busy" @click="run(false)"
+            >Prévia sem salvar</v-btn
           >
         </div>
-      </template>
-      <v-btn color="primary" :disabled="!featureId || searching" @click="step = 2">Continuar</v-btn>
-    </div>
-    <div v-show="step === 2">
-      <p class="note">
-        <strong>{{ selected.name }}</strong> · {{ features.find((f) => f.id === featureId)?.name }}
-      </p>
-      <p class="note">
-        Selecione camadas cujo conteúdo corresponda a cada papel. O nome do arquivo não determina
-        seu uso.
-      </p>
-      <EnvironmentalLayerPicker
-        v-for="role in selected.roles"
-        :key="role"
-        :model-value="inputs[role] ?? []"
-        :label="roleNames[role] ?? role"
-        multiple
-        :disabled="busy"
-        @update:model-value="inputs[role] = Array.isArray($event) ? $event : []"
-        @layers="remember"
-      />
-      <template v-if="indicator === 'irl'"
-        ><v-text-field
-          v-model.number="minimum"
-          type="number"
-          min="0"
-          max="100"
-          label="Percentual mínimo de reserva legal (%)"
-          :disabled="busy" /><v-textarea
-          v-model="reason"
-          label="Fundamento do percentual adotado"
-          rows="2"
-          :disabled="busy"
-      /></template>
-      <v-text-field
-        v-if="indicator === 'ifc'"
-        v-model="start"
-        type="date"
-        label="Data inicial"
-        :disabled="busy"
-      />
-      <v-text-field
-        v-if="indicator === 'ifc' || indicator === 'idesmat'"
-        v-model="end"
-        type="date"
-        label="Data final (inclusiva)"
-        :disabled="busy"
-      />
-      <v-alert v-if="error" type="error" class="mb-4">{{ error }}</v-alert>
-      <v-btn
-        color="primary"
-        prepend-icon="mdi-calculator-variant-outline"
-        :loading="busy"
-        :disabled="!valid || searching"
-        @click="run"
-        >Calcular indicador</v-btn
-      >
-      <p class="note mt-3">
-        Cálculo executado no Oracle. Esta consulta individual não grava histórico.
-      </p>
-    </div>
-    <section v-if="result" v-show="step === 3" class="results" aria-live="polite">
-      <h3>Resultado · {{ featureName }}</h3>
-      <p>Área analisada: {{ formatValue(result.areaImovelHa) }} ha</p>
-      <div v-for="group in resultGroups" :key="group.name" class="metric-card">
-        <h4>{{ group.name }}</h4>
-        <dl>
-          <template v-for="metric in group.metrics" :key="metric.key"
-            ><dt>{{ metric.label }}</dt>
-            <dd>
-              {{ formatValue(metric.value)
-              }}<span v-if="typeof metric.value === 'number'"> {{ metric.unit }}</span>
-            </dd></template
-          >
-        </dl>
+        <p class="note mt-3">
+          Salvar registra este indicador, os parâmetros e o resultado no histórico.
+        </p>
       </div>
-      <p class="note">Calculado em {{ calculatedAt }} · {{ result.projecaoCalculo }}</p>
-      <EnvironmentalResultActions v-if="snapshot" :snapshot="snapshot" />
-      <details>
-        <summary>Fontes utilizadas e rastreabilidade</summary>
-        <ul>
-          <li v-for="(source, index) in sources" :key="index">{{ source }}</li>
-        </ul>
-        <p class="note">Regra: {{ result.regra ?? 'Não disponível' }}</p>
-      </details>
-    </section>
+      <section v-if="result" v-show="step === 3" class="results" aria-live="polite">
+        <div class="result-navigation">
+          <v-btn variant="text" prepend-icon="mdi-arrow-left" @click="step = 2"
+            >Voltar aos dados</v-btn
+          ><v-btn color="primary" variant="tonal" prepend-icon="mdi-plus" @click="newCalculation"
+            >Novo cálculo</v-btn
+          >
+        </div>
+        <div class="result-heading">
+          <div>
+            <span class="result-eyebrow">{{ selected.name }}</span>
+            <h3>{{ featureName }}</h3>
+          </div>
+          <span class="history-status" :class="{ 'is-saved': result.calculoId }">{{
+            result.calculoId ? `Salvo no histórico · #${result.calculoId}` : 'Prévia · não salva'
+          }}</span>
+        </div>
+        <p>Área analisada: {{ formatValue(result.areaImovelHa) }} ha</p>
+        <div v-for="group in resultGroups" :key="group.name" class="metric-card">
+          <h4>{{ group.name }}</h4>
+          <dl>
+            <template v-for="metric in group.metrics" :key="metric.key"
+              ><dt>{{ metric.label }}</dt>
+              <dd>
+                <span>{{ formatValue(metric.value) }}</span
+                ><span v-if="typeof metric.value === 'number'" class="metric-unit">{{
+                  metric.unit
+                }}</span>
+              </dd></template
+            >
+          </dl>
+        </div>
+        <p class="note">Calculado em {{ calculatedAt }} · {{ result.projecaoCalculo }}</p>
+        <EnvironmentalResultActions v-if="snapshot" :snapshot="snapshot" />
+        <details>
+          <summary>Fontes utilizadas e rastreabilidade</summary>
+          <ul>
+            <li v-for="(source, index) in sources" :key="index">{{ source }}</li>
+          </ul>
+          <p class="note">Regra: {{ result.regra ?? 'Não disponível' }}</p>
+        </details>
+      </section>
+    </div>
   </section>
 </template>
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import EnvironmentalHistory from './EnvironmentalHistory.vue'
 import EnvironmentalResultActions from './EnvironmentalResultActions.vue'
 import type { CalculationSnapshot } from '@/services/environmentalReport'
 import EnvironmentalLayerPicker from './EnvironmentalLayerPicker.vue'
 import {
   calculate,
+  calculateAndSave,
   formatValue,
   indicators,
   listFeatures,
@@ -194,8 +233,15 @@ import {
 } from '@/services/environmentalIndicators'
 import { apiError } from '@/services/contracts'
 defineEmits<{ manageLayers: [] }>()
+const view = ref('calculate')
+const panelElement = ref<HTMLElement | null>(null)
 const step = ref(1),
   snapshot = ref<CalculationSnapshot | null>(null)
+watch([step, view], async () => {
+  await nextTick()
+  const viewport = panelElement.value?.closest('.workspace-content')
+  if (viewport) viewport.scrollTop = 0
+})
 const indicator = ref('icv'),
   areaLayer = ref<number | null>(null),
   featureId = ref<number | null>(null)
@@ -215,6 +261,45 @@ const minimum = ref<number | string>(''),
   end = ref(''),
   result = ref<Record<string, unknown> | null>(null),
   featureName = ref('')
+const featureCache = new Map<number, Feature>()
+const featureOptions = computed(() => {
+  const rows = new Map(features.value.map((f) => [f.id, f]))
+  const selected = featureId.value ? featureCache.get(featureId.value) : null
+  if (selected) rows.set(selected.id, selected)
+  return [...rows.values()]
+})
+let searchTimer: ReturnType<typeof setTimeout> | undefined
+function featureSearchChanged(value: string) {
+  if (busy.value || featureOptions.value.some((f) => f.name === value)) return
+  clearTimeout(searchTimer)
+  query.value = value || ''
+  searchTimer = setTimeout(() => void searchFeatures(0), 300)
+}
+function newCalculation() {
+  if (busy.value) return
+  clearTimeout(searchTimer)
+  epoch++
+  featureCache.clear()
+  areaLayer.value = null
+  featureId.value = null
+  features.value = []
+  featureTotal.value = 0
+  featurePage.value = 0
+  query.value = ''
+  field.value = null
+  fields.value = []
+  inputs.value = {}
+  minimum.value = ''
+  reason.value = ''
+  start.value = ''
+  end.value = ''
+  result.value = null
+  snapshot.value = null
+  featureName.value = ''
+  error.value = ''
+  searching.value = false
+  step.value = 1
+}
 const layers = new Map<number, Layer>()
 function remember(items: Layer[]) {
   for (const item of items) layers.set(item.id, item)
@@ -242,11 +327,11 @@ async function searchFeatures(page: number) {
   const request = ++epoch
   searching.value = true
   error.value = ''
-  featureId.value = null
   try {
     const data = await listFeatures(areaLayer.value, query.value, field.value ?? '', page)
     if (request !== epoch) return
     features.value = data.items
+    for (const f of data.items) featureCache.set(f.id, f)
     featurePage.value = page
     featureTotal.value = data.total
     const keys = new Set(fields.value)
@@ -257,7 +342,7 @@ async function searchFeatures(page: number) {
           if (/^[\p{L}\p{N}_]{1,100}$/u.test(k) && ['string', 'number'].includes(typeof v))
             keys.add(k)
       } catch {
-        /* Attributes may be absent. */
+        /* Os atributos podem estar ausentes. */
       }
     }
     fields.value = [...keys].sort()
@@ -273,6 +358,9 @@ async function searchFeatures(page: number) {
 }
 watch(areaLayer, () => {
   epoch++
+  clearTimeout(searchTimer)
+  featureCache.clear()
+  searching.value = false
   featureId.value = null
   features.value = []
   fields.value = []
@@ -294,9 +382,12 @@ watch(
   },
   { deep: true },
 )
-onBeforeUnmount(() => epoch++)
-async function run() {
-  if (!valid.value || !featureId.value) return
+onBeforeUnmount(() => {
+  epoch++
+  clearTimeout(searchTimer)
+})
+async function run(save = false) {
+  if (!valid.value || !featureId.value || busy.value) return
   busy.value = true
   error.value = ''
   result.value = null
@@ -308,10 +399,13 @@ async function run() {
   }
   if (['ifc', 'idesmat'].includes(indicator.value)) params.fim = end.value
   if (indicator.value === 'ifc') params.inicio = start.value
-  featureName.value =
-    features.value.find((f) => f.id === featureId.value)?.name ?? 'Área selecionada'
+  featureName.value = featureCache.get(featureId.value)?.name ?? 'Área selecionada'
   try {
-    const data = await calculate(featureId.value, indicator.value, params)
+    const data = await (save ? calculateAndSave : calculate)(
+      featureId.value,
+      indicator.value,
+      params,
+    )
     result.value = data
     snapshot.value = JSON.parse(
       JSON.stringify({
@@ -379,9 +473,14 @@ const sources = computed(() => {
       trace.map((s) => {
         const layer = layers.get(Number(s.camadaId))
         return s.nome
-          ? `${s.fonte} · ${s.arquivo} · ${s.nome} · versão ${s.versaoId}`
+          ? [
+              ...new Set(
+                [s.fonte, s.arquivo, s.nome].filter((v) => typeof v === 'string' && v.trim()),
+              ),
+            ].join(' · ') + ` · versão ${s.versaoId}`
           : layer
-            ? `${layer.source} · ${layer.file} · ${layer.name} · versão ${s.versaoId}`
+            ? [...new Set([layer.source, layer.file, layer.name])].join(' · ') +
+              ` · versão ${s.versaoId}`
             : `Camada ${s.camadaId} · arquivo ${s.arquivoId} · fonte ${s.fonteId} · versão ${s.versaoId}`
       }),
     ),
@@ -481,5 +580,108 @@ ul {
   .search-row {
     flex-wrap: wrap;
   }
+}
+.form-step {
+  max-width: 760px;
+}
+.steps {
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.1);
+  padding-bottom: 16px;
+  margin-bottom: 28px;
+}
+header h2 {
+  font-size: 24px;
+}
+header {
+  margin-bottom: 20px;
+}
+.results {
+  max-width: 900px;
+}
+.indicators-panel :deep(.v-field) {
+  font-size: 14px;
+}
+.indicators-panel :deep(.v-input) {
+  --v-input-control-height: 52px;
+}
+.metric-card {
+  max-width: 760px;
+}
+.advanced {
+  margin: 16px 0;
+}
+.calculation-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.result-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.result-eyebrow {
+  display: block;
+  font-size: 12px;
+  color: rgba(var(--v-theme-on-surface), 0.6);
+  margin-bottom: 8px;
+}
+.result-heading h3 {
+  font-size: 23px;
+}
+.history-status {
+  font-size: 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(var(--v-theme-on-surface), 0.06);
+  color: rgba(var(--v-theme-on-surface), 0.65);
+}
+.history-status.is-saved {
+  color: #7cd6a5;
+  background: #2eaa671a;
+}
+.metric-unit {
+  margin-left: 0.4em;
+  font-size: 12px;
+  font-weight: 400;
+  color: rgba(var(--v-theme-on-surface), 0.7);
+}
+.results {
+  border-top: 0;
+  padding-top: 0;
+}
+.metric-card {
+  padding: 20px;
+  margin: 20px 0;
+}
+.results > p {
+  font-size: 13px;
+}
+.results details {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.1);
+}
+.results dd {
+  display: flex;
+  justify-content: flex-end;
+  align-items: baseline;
+  white-space: nowrap;
+}
+.results dl {
+  gap: 16px;
+}
+.view-switch,
+.result-navigation {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 16px 0 24px;
+}
+.result-navigation {
+  justify-content: space-between;
 }
 </style>

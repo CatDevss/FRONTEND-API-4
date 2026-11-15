@@ -1,55 +1,73 @@
 <template>
   <section class="layers-panel">
-    <header>
-      <span class="eyebrow">DADOS PARA ANÁLISE</span>
-      <h2>Camadas</h2>
-      <p>
-        Uma camada reúne feições: municípios, imóveis ou pontos. Nos medidores, você escolhe uma
-        feição como área de análise.
-      </p>
+    <header class="page-heading">
+      <div>
+        <h2>Camadas</h2>
+        <p>Prepare os arquivos que serão usados nas análises.</p>
+      </div>
+      <v-btn
+        v-if="can('ingestion.run')"
+        color="primary"
+        prepend-icon="mdi-plus"
+        :disabled="busy"
+        @click="openImport"
+        >Nova camada</v-btn
+      >
     </header>
-    <div class="filters">
+    <div class="catalog-search">
+      <v-text-field
+        v-model="search"
+        label="Buscar camada"
+        prepend-inner-icon="mdi-magnify"
+        density="compact"
+        variant="outlined"
+        hide-details
+        clearable
+        @keyup.enter="load(0)"
+      />
+      <v-btn variant="tonal" :loading="loading" @click="load(0)">Buscar</v-btn>
+      <v-btn variant="text" @click="filtersOpen = !filtersOpen" :aria-expanded="filtersOpen"
+        >Filtros</v-btn
+      >
+    </div>
+    <div v-if="filtersOpen" class="filters secondary-filters">
       <v-autocomplete
         v-model="dataset"
         :items="datasets"
         item-title="name"
         item-value="id"
         label="Conjunto"
+        density="compact"
+        variant="outlined"
         clearable
+        hide-details
         :disabled="busy"
-      /><v-text-field v-model="search" label="Nome da camada" @keyup.enter="load(0)" /><v-select
+      />
+      <v-select
         v-model="type"
         :items="geometryTypes"
         label="Tipo"
+        density="compact"
+        variant="outlined"
         clearable
-      /><v-text-field v-model="source" label="Fonte" @keyup.enter="load(0)" /><v-btn
-        variant="tonal"
-        :loading="loading"
-        @click="load(0)"
-        >Buscar</v-btn
-      >
+        hide-details
+      />
+      <v-text-field
+        v-model="source"
+        label="Fonte"
+        density="compact"
+        variant="outlined"
+        hide-details
+        @keyup.enter="load(0)"
+      />
     </div>
     <v-btn
-      v-if="can('ingestion.run')"
-      color="primary"
-      prepend-icon="mdi-plus"
-      :disabled="!dataset || busy"
-      @click="openImport"
-      >Criar camada de arquivo tratado</v-btn
-    >
-    <v-btn
       v-if="can('ingestion.run') && compositionEnabled"
-      class="ml-2"
-      variant="tonal"
+      variant="text"
       :disabled="!dataset || busy"
       @click="showCombine = true"
       >Combinar camadas</v-btn
     >
-    <p v-if="!dataset" class="note">Escolha um conjunto para criar camadas.</p>
-    <p v-if="!compositionEnabled" class="note">
-      Você pode usar várias camadas diretamente em um indicador. A composição aguarda habilitação
-      após validação no banco.
-    </p>
     <v-alert v-if="error" type="error" class="my-3">{{ error }}</v-alert>
     <v-alert v-if="success" type="success" class="my-3">{{ success }}</v-alert>
     <div v-if="!loading && !rows.length" class="empty">
@@ -72,73 +90,108 @@
         >Próxima</v-btn
       >
     </div>
-    <v-dialog v-model="showImport" max-width="680" :persistent="busy"
-      ><v-card title="Criar camada"
-        ><v-card-text>
-          <p class="note">
-            Escolha uma versão tratada do conjunto. CSV deve conter focos com id, lat, lon e
-            data_hora_gmt. GeoJSON deve conter geometrias válidas.
+    <v-dialog v-model="showImport" max-width="720" :persistent="busy" scrollable>
+      <v-card class="import-card" rounded="lg">
+        <v-card-title class="pt-6 px-6">Nova camada</v-card-title>
+        <v-card-text class="px-6">
+          <p class="import-intro">
+            Escolha um arquivo já tratado. Seus registros serão preparados para uso nos indicadores.
           </p>
-          <div class="filters">
-            <v-text-field
-              v-model="versionSearch"
-              label="Buscar arquivo tratado"
-              :disabled="busy"
-              @keyup.enter="loadVersions(0)"
-            /><v-btn
-              variant="text"
-              :disabled="busy"
-              :loading="versionsLoading"
-              @click="loadVersions(0)"
-              >Buscar</v-btn
-            >
-          </div>
-          <v-select
-            v-model="versionId"
-            :items="
-              versions.map((v) => ({
-                ...v,
-                label: `${v.file} · versão ${v.number} · ${v.source}${v.importedLayers ? ' · já importada' : ''}`,
-                props: { disabled: v.importedLayers > 0 },
-              }))
-            "
-            item-title="label"
+          <v-autocomplete
+            v-model="dataset"
+            :items="datasets"
+            item-title="name"
             item-value="id"
-            label="Arquivo e versão"
+            label="1. Escolha o conjunto"
+            variant="outlined"
+            density="comfortable"
             :disabled="busy"
-            no-data-text="Nenhuma versão tratada importável"
           />
-          <div class="pages">
-            <v-btn
-              variant="text"
-              :disabled="!versionPage || busy || versionsLoading"
-              @click="loadVersions(versionPage - 1)"
-              >Anterior</v-btn
-            ><span>{{ versionTotal }} versões</span
-            ><v-btn
-              variant="text"
-              :disabled="(versionPage + 1) * 20 >= versionTotal || busy || versionsLoading"
-              @click="loadVersions(versionPage + 1)"
-              >Próxima</v-btn
-            >
-          </div>
-          <v-alert v-if="dialogError" type="error">{{ dialogError }}</v-alert>
-          <p class="note">
-            A importação pode demorar alguns minutos. Após erro de conexão, confira o catálogo antes
-            de tentar novamente.
-          </p> </v-card-text
-        ><v-card-actions
-          ><v-btn :disabled="busy" @click="showImport = false">Fechar</v-btn
+          <template v-if="dataset">
+            <h3 class="file-heading">2. Escolha o arquivo</h3>
+            <div class="catalog-search">
+              <v-text-field
+                v-model="versionSearch"
+                label="Buscar arquivo"
+                variant="outlined"
+                density="compact"
+                hide-details
+                :disabled="busy"
+                @keyup.enter="loadVersions(0)"
+              />
+              <v-btn
+                variant="text"
+                :disabled="busy"
+                :loading="versionsLoading"
+                @click="loadVersions(0)"
+                >Buscar</v-btn
+              >
+            </div>
+            <v-progress-linear v-if="versionsLoading" indeterminate color="primary" class="my-3" />
+            <div v-else-if="!versions.length" class="file-empty">
+              Nenhum arquivo tratado disponível neste conjunto.
+            </div>
+            <div v-else class="file-choices" role="radiogroup" aria-label="Arquivo tratado">
+              <button
+                v-for="version in versions"
+                :key="version.id"
+                type="button"
+                role="radio"
+                :aria-checked="versionId === version.id"
+                :disabled="busy || version.importedLayers > 0"
+                :class="['file-choice', { 'is-selected': versionId === version.id }]"
+                @click="versionId = version.id"
+              >
+                <v-icon
+                  :icon="versionId === version.id ? 'mdi-radiobox-marked' : 'mdi-radiobox-blank'"
+                  size="20"
+                />
+                <span class="file-description"
+                  ><strong>{{ version.file }}</strong
+                  ><small
+                    >{{ version.source }} · {{ version.format }} · Versão
+                    {{ version.number }}</small
+                  ></span
+                >
+                <span v-if="version.importedLayers" class="file-status">Já criada</span>
+              </button>
+            </div>
+            <div v-if="versionTotal > 20" class="pages">
+              <v-btn
+                variant="text"
+                :disabled="!versionPage || busy || versionsLoading"
+                @click="loadVersions(versionPage - 1)"
+                >Anterior</v-btn
+              ><span>Página {{ versionPage + 1 }}</span
+              ><v-btn
+                variant="text"
+                :disabled="(versionPage + 1) * 20 >= versionTotal || busy || versionsLoading"
+                @click="loadVersions(versionPage + 1)"
+                >Próxima</v-btn
+              >
+            </div>
+          </template>
+          <v-alert v-if="dialogError" type="error" class="mt-3">{{ dialogError }}</v-alert>
+          <p v-if="versionId" class="import-summary">
+            O arquivo escolhido pode gerar várias feições dentro de uma única camada.
+          </p>
+          <p v-if="busy" class="import-summary" role="status">
+            Preparando os registros. Isso pode levar alguns minutos.
+          </p>
+        </v-card-text>
+        <v-card-actions class="px-6 pb-5"
+          ><v-spacer /><v-btn :disabled="busy" @click="showImport = false">Cancelar</v-btn
           ><v-btn
             color="primary"
+            variant="flat"
             :loading="busy"
             :disabled="!versionId || versionsLoading"
             @click="importSelected"
             >Criar camada</v-btn
           ></v-card-actions
-        ></v-card
-      ></v-dialog
-    >
+        >
+      </v-card>
+    </v-dialog>
     <v-dialog v-model="showCombine" max-width="680" :persistent="busy"
       ><v-card title="Combinar camadas"
         ><v-card-text>
@@ -212,6 +265,7 @@ import {
   type ImportableVersion,
 } from '@/services/environmentalIndicators'
 import EnvironmentalLayerPicker from './EnvironmentalLayerPicker.vue'
+const filtersOpen = ref(false)
 const props = defineProps<{ initialDataset?: number | null }>()
 const dataset = ref<number | null>(props.initialDataset ?? null),
   datasets = ref<{ id: number; name: string }[]>([]),
@@ -313,7 +367,7 @@ async function loadVersions(next: number) {
 function openImport() {
   showImport.value = true
   versionSearch.value = ''
-  void loadVersions(0)
+  if (dataset.value) void loadVersions(0)
 }
 async function details(id: number) {
   const request = ++detailEpoch
@@ -366,6 +420,7 @@ watch(dataset, () => {
   combinedIds.value = []
   success.value = ''
   void load(0)
+  if (showImport.value && dataset.value) void loadVersions(0)
 })
 watch(showCombine, () => {
   dialogError.value = ''
@@ -454,5 +509,109 @@ dl {
 ul {
   padding-left: 20px;
   line-height: 1.8;
+}
+.page-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 28px;
+}
+.page-heading h2 {
+  font-size: 24px;
+  margin: 0 0 6px;
+}
+.page-heading p {
+  margin: 0;
+}
+.catalog-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 0 20px;
+}
+.catalog-search > .v-input {
+  flex: 1;
+  min-width: 0;
+}
+.secondary-filters {
+  margin-bottom: 20px;
+}
+.import-intro {
+  font-size: 14px;
+  line-height: 1.6;
+  margin: 0 0 24px;
+  color: rgba(var(--v-theme-on-surface), 0.7);
+}
+.file-heading {
+  font-size: 14px;
+  margin: 8px 0 16px;
+}
+.file-choices {
+  display: grid;
+  gap: 10px;
+  margin: 16px 0;
+}
+.file-choice {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 16px;
+  text-align: left;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.15);
+  border-radius: 12px;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+.file-choice:hover {
+  background: rgba(var(--v-theme-on-surface), 0.04);
+}
+.file-choice.is-selected {
+  border-color: rgb(var(--v-theme-primary));
+  background: rgba(var(--v-theme-primary), 0.06);
+}
+.file-choice:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.file-description {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.file-description strong {
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.file-description small,
+.file-status {
+  font-size: 12px;
+  color: rgba(var(--v-theme-on-surface), 0.6);
+}
+.file-status {
+  margin-left: auto;
+}
+.file-empty {
+  padding: 24px 0;
+  color: rgba(var(--v-theme-on-surface), 0.6);
+}
+.import-summary {
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 20px 0 0;
+  color: rgba(var(--v-theme-on-surface), 0.65);
+}
+@media (max-width: 600px) {
+  .page-heading {
+    align-items: flex-start;
+  }
+  .catalog-search {
+    flex-wrap: wrap;
+  }
+  .page-heading h2 {
+    font-size: 22px;
+  }
 }
 </style>

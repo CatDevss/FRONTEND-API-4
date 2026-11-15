@@ -75,6 +75,19 @@ export async function calculate(
     )
   ).data
 }
+export async function calculateAndSave(
+  feature: number,
+  indicator: string,
+  parameters: Record<string, unknown>,
+) {
+  return (
+    await axios.post<Record<string, unknown>>(
+      `/imoveis/${feature}/indicadores/${indicator}/calcular`,
+      parameters,
+      { timeout: 310000 },
+    )
+  ).data
+}
 export function formatValue(value: unknown): string {
   return typeof value === 'number' && Number.isFinite(value)
     ? new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 4 }).format(value)
@@ -130,4 +143,28 @@ export async function loadResultMap(
       timeout: 310000,
     })
   ).data
+}
+
+export interface HistoryEntry {
+  id: number
+  featureId: number
+  name: string
+  indicator: string
+  calculatedAt: string
+  rule: string
+}
+export interface HistoryDetail {
+  calculation: HistoryEntry
+  parameters: Record<string, unknown>
+  result: Record<string, unknown>
+}
+export async function listHistory(busca: string, indicador: string, page = 0) {
+  return (
+    await axios.get<Page<HistoryEntry>>('/ambiental/calculos', {
+      params: { busca, indicador, page, size: 20 },
+    })
+  ).data
+}
+export async function getHistory(id: number) {
+  return (await axios.get<HistoryDetail>(`/ambiental/calculos/${id}`)).data
 }

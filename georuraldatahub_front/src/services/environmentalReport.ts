@@ -46,6 +46,8 @@ export function reportRows(snapshot: CalculationSnapshot): ReportRow[] {
     ['Análise', 'Área analisada', value(r.areaImovelHa), 'ha'],
     ['Análise', 'Data do cálculo', value(r.calculadoEm), ''],
     ['Análise', 'Regra', value(r.regra), ''],
+    ['Histórico', 'Situação', r.calculoId ? 'Salvo' : 'Prévia não salva', ''],
+    ['Histórico', 'Número do cálculo', value(r.calculoId), ''],
     ['Análise', 'Projeção', value(r.projecaoCalculo), ''],
   ]
   for (const group of metricGroups) {
@@ -90,7 +92,7 @@ export function reportCsv(rows: ReportRow[]): string {
         row
           .map((cell) => {
             let text = String(cell)
-            // Strings stay literal even when opened by a spreadsheet application.
+            // Impede que textos sejam interpretados como fórmulas na planilha.
             if (typeof cell === 'string' && /^[\s]*[=+@-]/.test(text)) text = "'" + text
             return '"' + text.replace(/"/g, '""') + '"'
           })

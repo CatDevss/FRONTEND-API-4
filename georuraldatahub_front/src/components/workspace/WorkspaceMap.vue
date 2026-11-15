@@ -1,5 +1,5 @@
 <template>
-  <div class="map-shell">
+  <div class="map-shell georural-map">
     <div ref="element" class="map-canvas" aria-label="Mapa Leaflet de registros validados"></div>
     <v-chip v-if="cursor" size="small" class="map-cursor">{{ cursor }}</v-chip>
     <v-alert
@@ -29,6 +29,8 @@ import {
 import { apiError } from '@/services/contracts'
 import { useWorkspaceStore } from '@/stores/workspace'
 import 'leaflet/dist/leaflet.css'
+import '@/assets/map.css'
+import { addMapPresentation, paranaBounds } from '@/services/mapPresentation'
 
 const props = defineProps<{
   visible: boolean
@@ -39,7 +41,7 @@ const workspace = useWorkspaceStore(),
   element = ref<HTMLElement | null>(null),
   cursor = ref(''),
   notice = ref('')
-const parana = L.latLngBounds([-26.72, -54.62], [-22.5, -48.02])
+const parana = paranaBounds()
 let map: L.Map | null = null,
   generation = 0,
   observer: ResizeObserver | null = null
@@ -233,7 +235,7 @@ function visiblePadding() {
     bottom = (props.insets?.bottom ?? 0) + 24
   const width = element.value?.clientWidth ?? 0,
     height = element.value?.clientHeight ?? 0
-  // Keep a usable viewport even on small screens or when the overlays wrap.
+  // Reserva espaço para o mapa em telas pequenas e com painéis sobrepostos.
   if (width > 0 && left + right > width - 96) {
     const ratio = Math.max(0, width - 96) / (left + right)
     left *= ratio
@@ -281,23 +283,7 @@ watch(
 onMounted(() => {
   if (!element.value) return
   map = L.map(element.value, { preferCanvas: true, zoomControl: false }).fitBounds(parana)
-  const streets = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; OpenStreetMap contributors',
-    maxZoom: 19,
-    className: 'map-tiles-dark',
-  })
-  const satellite = L.tileLayer(
-    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    { attribution: 'Imagens &copy; Esri, Maxar, Earthstar Geographics', maxZoom: 19 },
-  )
-  streets.addTo(map)
-  L.control
-    .layers({ 'Ruas (escuro)': streets, Satélite: satellite }, undefined, {
-      position: 'bottomright',
-    })
-    .addTo(map)
-  L.control.zoom({ position: 'bottomright' }).addTo(map)
-  L.control.scale({ imperial: false }).addTo(map)
+  addMapPresentation(map)
   map.on('click', inspect)
   map.on('zoomend', refreshInspection)
   map.on('mousemove', (event: L.LeafletMouseEvent) => {
@@ -344,10 +330,6 @@ defineExpose({ fitVisibleLayers, resetView, closeInspection })
   min-height: 0;
   background: #141414;
 }
-.map-shell :deep(.map-tiles-dark) {
-  /* Escurece apenas a base cartográfica; feições e imagens de satélite mantêm suas cores. */
-  filter: grayscale(1) invert(1) contrast(0.9);
-}
 .map-cursor {
   position: absolute;
   bottom: 5px;
@@ -366,62 +348,5 @@ defineExpose({ fitVisibleLayers, resetView, closeInspection })
   z-index: 1000;
   border-radius: 16px;
   background: rgba(var(--v-theme-surface), 0.97);
-}
-.map-shell :deep(.leaflet-right) {
-  right: 6px;
-}
-.map-shell :deep(.leaflet-bar),
-.map-shell :deep(.leaflet-control-layers) {
-  background: rgba(var(--v-theme-surface), 0.97);
-  color: rgb(var(--v-theme-on-surface));
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.12);
-  border-radius: 12px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
-  overflow: hidden;
-}
-.map-shell :deep(.leaflet-bar a) {
-  background: transparent;
-  color: rgb(var(--v-theme-on-surface));
-  border-color: var(--glass-outer-border);
-  width: 34px;
-  height: 34px;
-  line-height: 34px;
-}
-.map-shell :deep(.leaflet-bar a:hover),
-.map-shell :deep(.leaflet-bar a:focus-visible) {
-  background: rgba(var(--v-theme-primary), 0.12);
-  color: rgb(var(--v-theme-primary));
-}
-.map-shell :deep(.leaflet-bar a.leaflet-disabled) {
-  color: rgba(var(--v-theme-on-surface), 0.3);
-}
-.map-shell :deep(.leaflet-control-layers-toggle) {
-  width: 36px;
-  height: 36px;
-  filter: invert(0.85);
-}
-.map-shell :deep(.leaflet-control-layers-expanded) {
-  padding: 10px 14px;
-}
-.map-shell :deep(.leaflet-control-layers label) {
-  line-height: 2;
-  font-family: inherit;
-  accent-color: rgb(var(--v-theme-primary));
-}
-.map-shell :deep(.leaflet-control-attribution) {
-  background: rgba(var(--v-theme-surface), 0.9);
-  color: rgba(var(--v-theme-on-surface), 0.65);
-  border-radius: 6px 0 0 0;
-  font-size: 9px;
-}
-.map-shell :deep(.leaflet-control-attribution a) {
-  color: rgb(var(--v-theme-primary));
-}
-.map-shell :deep(.leaflet-control-scale-line) {
-  background: rgba(var(--v-theme-surface), 0.9);
-  color: rgba(var(--v-theme-on-surface), 0.8);
-  border-color: rgba(var(--v-theme-on-surface), 0.4);
-  text-shadow: none;
-  border-radius: 4px;
 }
 </style>

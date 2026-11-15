@@ -33,7 +33,7 @@ describe('development permission preview across navigation and reloads', () => {
     expect(sessionStorage.getItem(key)).toBe('7')
     expect(sessionStorage.length).toBe(1)
 
-    // Re-evaluate the JS modules, as on a full page reload.
+    // Recarrega os módulos como ao atualizar a página.
     vi.resetModules()
     const { default: reloadedRouter } = await import('@/router')
     const reloadedSession = await import('@/access/session')

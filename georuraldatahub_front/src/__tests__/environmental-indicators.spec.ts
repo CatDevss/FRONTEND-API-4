@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import axios from 'axios'
 import {
   calculate,
+  calculateAndSave,
   listFeatures,
   listLayers,
   formatValue,
@@ -26,6 +27,15 @@ describe('contratos ambientais', () => {
     const params = { focos: [43, 44], inicio: '2021-01-01', fim: '2026-11-15' }
     expect(await calculate(928, 'ifc', params)).toEqual(result)
     expect(axios.post).toHaveBeenCalledWith('/imoveis/928/indicadores/ifc', params, {
+      timeout: 310000,
+    })
+  })
+  it('salva o indicador escolhido sem exigir todos os insumos', async () => {
+    vi.mocked(axios.post).mockResolvedValue({ data: { IFC: { quantidade: 273 }, calculoId: 7 } })
+    const params = { focos: [43], inicio: '2021-01-01', fim: '2026-11-15' }
+    const result = await calculateAndSave(928, 'ifc', params)
+    expect(result.calculoId).toBe(7)
+    expect(axios.post).toHaveBeenCalledWith('/imoveis/928/indicadores/ifc/calcular', params, {
       timeout: 310000,
     })
   })
@@ -62,6 +72,7 @@ function mountPanel() {
         EnvironmentalLayerPicker: Picker,
         EnvironmentalResultActions: true,
         VSelect: Input,
+        VAutocomplete: Input,
         VTextField: Input,
         VTextarea: Input,
         VBtn: Button,
@@ -106,20 +117,20 @@ describe('formulário ambiental', () => {
     expect(
       panel
         .findAll('button')
-        .find((b) => b.text() === 'Calcular indicador')!
+        .find((b) => b.text() === 'Prévia sem salvar')!
         .attributes(),
     ).toHaveProperty('disabled')
     panel.findComponent({ name: 'TestPicker' }).vm.$emit('update:modelValue', 19)
     await flushPromises()
     panel
       .findAllComponents({ name: 'TestInput' })
-      .find((c) => c.props('label') === 'Feição da área de análise')!
+      .find((c) => c.props('label') === 'Buscar município, imóvel ou bioma')!
       .vm.$emit('update:modelValue', 928)
     panel.findAllComponents({ name: 'TestPicker' })[1]!.vm.$emit('update:modelValue', [28, 35])
     await flushPromises()
     await panel
       .findAll('button')
-      .find((b) => b.text() === 'Calcular indicador')!
+      .find((b) => b.text() === 'Prévia sem salvar')!
       .trigger('click')
     await flushPromises()
     expect(axios.post).toHaveBeenCalledWith(
@@ -129,7 +140,42 @@ describe('formulário ambiental', () => {
     )
     expect(panel.text()).toContain('Curitiba')
     expect(panel.text()).toContain('Não disponível')
-    expect(panel.text()).toContain('0 ha')
+    expect(panel.text()).toContain('0')
+    expect(panel.text()).toContain('ha')
+    expect(panel.text()).toContain('Prévia · não salva')
+    vi.mocked(axios.post).mockResolvedValue({
+      data: { ICV: { areaHa: 0, percentual: null }, areaImovelHa: 100, fontes: [], calculoId: 17 },
+    })
+    await panel
+      .findAll('button')
+      .find((b) => b.text() === '2 · Dados')!
+      .trigger('click')
+    await panel
+      .findAll('button')
+      .find((b) => b.text() === 'Calcular e salvar')!
+      .trigger('click')
+    await flushPromises()
+    expect(axios.post).toHaveBeenLastCalledWith(
+      '/imoveis/928/indicadores/icv/calcular',
+      { vegetacao: [28, 35] },
+      { timeout: 310000 },
+    )
+    expect(panel.text()).toContain('Salvo no histórico · #17')
+    expect(panel.findAll('button').some((b) => b.text() === 'Voltar aos dados')).toBe(true)
+    await panel
+      .findAll('button')
+      .find((b) => b.text() === 'Novo cálculo')!
+      .trigger('click')
+    await flushPromises()
+    expect(panel.findAllComponents({ name: 'TestPicker' })[0]!.props('modelValue')).toBe(null)
+    expect(
+      panel
+        .findAll('button')
+        .find((b) => b.text() === 'Continuar')!
+        .attributes(),
+    ).toHaveProperty('disabled')
+    expect(panel.text()).not.toContain('Salvo no histórico · #17')
+
     panel.unmount()
   })
 })
