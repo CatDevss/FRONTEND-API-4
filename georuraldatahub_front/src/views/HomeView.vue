@@ -189,19 +189,7 @@
           >
             <WorkspaceInspection :result="inspection" @close="mapView?.closeInspection()" />
           </div>
-          <section
-            v-if="workspace.activeTab === 'meters'"
-            class="meters-empty floating-panel"
-            aria-label="Medidores"
-          >
-            <span class="meters-icon"><v-icon icon="mdi-gauge" size="32" /></span>
-            <span class="context-label mt-4">INDICADORES AMBIENTAIS</span>
-            <h2 class="text-h6 mt-2">Medidores ainda não disponíveis</h2>
-            <p class="text-body-2 text-medium-emphasis mt-2">
-              Os indicadores serão exibidos quando o serviço de cálculo estiver integrado. Nenhum
-              indicador é calculado no navegador.
-            </p>
-          </section>
+          <WorkspaceIndicators v-if="workspace.activeTab === 'meters'" />
         </main>
 
         <footer ref="footerElement" class="workspace-footer">
@@ -279,6 +267,7 @@ import { useRoute } from 'vue-router'
 import { can } from '@/access/session'
 import { useWorkspaceStore } from '@/stores/workspace'
 import WorkspaceExplorer from '@/components/workspace/WorkspaceExplorer.vue'
+import WorkspaceIndicators from '@/components/workspace/WorkspaceIndicators.vue'
 import WorkspaceMap from '@/components/workspace/WorkspaceMap.vue'
 import WorkspaceInspection from '@/components/workspace/WorkspaceInspection.vue'
 import type { MapInspection } from '@/services/mapInspection'

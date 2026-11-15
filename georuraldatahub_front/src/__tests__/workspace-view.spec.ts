@@ -99,6 +99,7 @@ async function setup(options: { empty?: boolean; noLayers?: boolean } = {}) {
     global: {
       plugins: [pinia, router],
       stubs: {
+        WorkspaceIndicators: { template: '<section>Formulário de indicadores</section>' },
         VCard: Container,
         VBtn: Button,
         VTabs: Tabs,
@@ -168,13 +169,12 @@ describe('workspace explorer and tabs', () => {
     await wrapper.find('input[type="checkbox"]').setValue(true)
     expect(workspace.isVisible(11)).toBe(true)
   })
-  it('shows Medidores without requesting or calculating indicators', async () => {
+  it('opens the indicator panel while preserving map state', async () => {
     const { wrapper, workspace } = await setup()
     wrapper.findComponent(Tabs).vm.$emit('update:modelValue', 'meters')
     await flushPromises()
     expect(workspace.activeTab).toBe('meters')
-    expect(wrapper.text()).toContain('Medidores ainda não disponíveis')
-    expect(wrapper.text()).toContain('Nenhum indicador é calculado no navegador')
+    expect(wrapper.text()).toContain('Formulário de indicadores')
     expect(
       vi
         .mocked(axios.get)

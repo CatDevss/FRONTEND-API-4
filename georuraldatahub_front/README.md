@@ -73,7 +73,6 @@ Os detalhes usam `GET /quarentenas/{id}`. Assumir e resolver usam POST nas açõ
 
 Resolver exige confirmação e encerra apenas a análise: não aprova dados rejeitados, não altera o motivo e não substitui o relatório original. Na matriz da interface, o Operador prepara a correção; os demais perfis consultam. Isso não implementa autorização no backend: ele ainda recebe `userId` sem autenticar essa identidade nem restringir por cargo.
 
-
 ## Conectores e formatos de ingestão
 
 A tela Nova ingestão utiliza o catálogo de `GET /fontes/conectores` e suporta os onze produtos automáticos atuais: IBGE Municípios/Biomas, INPE PRODES/Queimadas, ICMBio Unidades de Conservação/Embargos, MMA, FUNAI, INCRA, SFB e IBAMA. CAR/SICAR permanece manual. A compatibilidade da URL da fonte segue os domínios e caminhos aceitos pelo backend.
@@ -101,13 +100,11 @@ informa carregamentos e falhas, oferece acesso progressivo quando há muitas
 feições e limpa a consulta ao atualizar/trocar o conjunto. Em telas estreitas,
 o explorador cede espaço temporariamente à consulta e volta ao fechar o painel.
 
-
 ## Navegação entre páginas
 
 As sete páginas de trabalho ficam em memória com `KeepAlive` durante a sessão. Voltar pelo menu ou pelo histórico preserva filtros, seleção e a instância do mapa, sem repetir a carga inicial. Login e acesso negado não são mantidos nesse cache. Trocar o usuário ou cargo, ou sair, destrói as instâncias anteriores.
 
 Respostas bem-sucedidas de escrita na API marcam os dados para atualização quando uma página for reativada; consultas e verificações sem persistência não invalidam o cache. Os botões Atualizar continuam disponíveis para consultar mudanças externas. Links com filtros de fonte, arquivo ou conjunto continuam sendo aplicados ao retornar à página correspondente. A confirmação de descarte do dicionário continua removendo as edições não salvas.
-
 
 ## Dicionário gerado a partir do conteúdo
 

@@ -17,11 +17,8 @@
   --glass-shadow: 0 10px 34px rgba(0, 0, 0, 0.45);
 
   /* Fundo estrelado — gradiente quente/frio escuro por trás do céu de estrelas */
-  --space-gradient: radial-gradient(
-      1200px 700px at 15% 10%,
-      rgba(120, 60, 20, 0.16) 0%,
-      transparent 55%
-    ),
+  --space-gradient:
+    radial-gradient(1200px 700px at 15% 10%, rgba(120, 60, 20, 0.16) 0%, transparent 55%),
     linear-gradient(150deg, #140e0a 0%, #0c0a10 45%, #050408 100%);
 }
 
@@ -77,13 +74,21 @@ body::after {
 }
 
 @keyframes derivar-estrelas {
-  from { background-position: 0% 0%; }
-  to   { background-position: 15% 10%; }
+  from {
+    background-position: 0% 0%;
+  }
+  to {
+    background-position: 15% 10%;
+  }
 }
 
 @keyframes respirar-zoom {
-  from { transform: scale(1); }
-  to   { transform: scale(1.08); }
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.08);
+  }
 }
 
 #app {
