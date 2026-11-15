@@ -5,7 +5,7 @@
       class="workspace"
       :class="{
         'explorer-hidden': !explorerOpen,
-        'showing-meters': workspace.activeTab === 'meters',
+        'showing-meters': workspace.activeTab !== 'map',
         inspecting: !!inspection && workspace.activeTab === 'map',
       }"
     >
@@ -40,6 +40,7 @@
               aria-label="Visualizações do workspace"
             >
               <v-tab value="map" prepend-icon="mdi-map-outline">Mapa</v-tab>
+              <v-tab value="layers" prepend-icon="mdi-layers-outline">Camadas</v-tab>
               <v-tab value="meters" prepend-icon="mdi-gauge">Medidores</v-tab>
             </v-tabs>
           </div>
@@ -189,7 +190,14 @@
           >
             <WorkspaceInspection :result="inspection" @close="mapView?.closeInspection()" />
           </div>
-          <WorkspaceIndicators v-if="workspace.activeTab === 'meters'" />
+          <WorkspaceLayers
+            v-if="workspace.activeTab === 'layers'"
+            :initial-dataset="workspace.selectedDatasetId"
+          />
+          <WorkspaceIndicators
+            v-if="workspace.activeTab === 'meters'"
+            @manage-layers="workspace.activeTab = 'layers'"
+          />
         </main>
 
         <footer ref="footerElement" class="workspace-footer">
@@ -267,6 +275,7 @@ import { useRoute } from 'vue-router'
 import { can } from '@/access/session'
 import { useWorkspaceStore } from '@/stores/workspace'
 import WorkspaceExplorer from '@/components/workspace/WorkspaceExplorer.vue'
+import WorkspaceLayers from '@/components/workspace/WorkspaceLayers.vue'
 import WorkspaceIndicators from '@/components/workspace/WorkspaceIndicators.vue'
 import WorkspaceMap from '@/components/workspace/WorkspaceMap.vue'
 import WorkspaceInspection from '@/components/workspace/WorkspaceInspection.vue'

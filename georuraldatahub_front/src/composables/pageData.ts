@@ -12,7 +12,9 @@ export function trackDataMutation(response: AxiosResponse): AxiosResponse {
     response.status < 300 &&
     method &&
     ['post', 'put', 'patch', 'delete'].includes(method) &&
-    !path.endsWith('/verificacao')
+    !path.endsWith('/verificacao') &&
+    !path.startsWith('/ambiental/exportacoes/') &&
+    !/\/indicadores\/(icv|irl|iapp|isap|iae|idesmat|ifc)(\/mapa)?$/.test(path)
   )
     revision++
   return response

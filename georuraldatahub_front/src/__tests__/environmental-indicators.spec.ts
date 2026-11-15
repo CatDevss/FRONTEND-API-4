@@ -60,6 +60,7 @@ function mountPanel() {
     global: {
       stubs: {
         EnvironmentalLayerPicker: Picker,
+        EnvironmentalResultActions: true,
         VSelect: Input,
         VTextField: Input,
         VTextarea: Input,

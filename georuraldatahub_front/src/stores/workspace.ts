@@ -26,7 +26,7 @@ export const layerColors = [
 ]
 export const useWorkspaceStore = defineStore('workspace', () => {
   const selectedDatasetId = ref<number | null>(null)
-  const activeTab = ref<'map' | 'meters'>('map')
+  const activeTab = ref<'map' | 'meters' | 'layers'>('map')
   const datasets = ref<Dataset[]>([]),
     structure = ref<DatasetStructure | null>(null)
   const references = ref<LayerReference[]>([])

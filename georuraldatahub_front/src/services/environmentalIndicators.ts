@@ -9,6 +9,8 @@ export interface Layer {
   source: string
   geometry: string
   features: number
+  srid: number
+  composed: boolean
   polygons: number
 }
 export interface Feature {
@@ -40,9 +42,18 @@ export const roleNames: Record<string, string> = {
   desmatamento: 'Desmatamento',
   focos: 'Focos de calor',
 }
-export async function listLayers(busca: string, page = 0) {
-  return (await axios.get<Page<Layer>>('/ambiental/camadas', { params: { busca, page, size: 20 } }))
-    .data
+export interface LayerFilters {
+  conjunto?: number
+  tipo?: string
+  fonte?: string
+  poligonal?: boolean
+}
+export async function listLayers(busca: string, page = 0, filters: LayerFilters = {}) {
+  return (
+    await axios.get<Page<Layer>>('/ambiental/camadas', {
+      params: { busca, page, size: 20, ...filters },
+    })
+  ).data
 }
 export async function listFeatures(layer: number, busca: string, campo: string, page = 0) {
   return (
@@ -68,4 +79,55 @@ export function formatValue(value: unknown): string {
   return typeof value === 'number' && Number.isFinite(value)
     ? new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 4 }).format(value)
     : 'Não disponível'
+}
+
+export interface ImportableVersion {
+  id: number
+  number: number
+  fileId: number
+  file: string
+  source: string
+  format: string
+  importedLayers: number
+}
+export async function listVersions(dataset: number, busca: string, page = 0) {
+  return (
+    await axios.get<Page<ImportableVersion>>(`/conjuntos/${dataset}/versoes-importaveis`, {
+      params: { busca, page, size: 20 },
+    })
+  ).data
+}
+export async function importLayer(dataset: number, version: number) {
+  return (
+    await axios.post<{ camadaId: number; quantidade: number }>(
+      `/conjuntos/${dataset}/versoes/${version}/camada-oracle`,
+      undefined,
+      { timeout: 310000 },
+    )
+  ).data
+}
+export async function layerDetails(id: number) {
+  return (await axios.get<{ layer: Layer; origins: Layer[] }>(`/ambiental/camadas/${id}`)).data
+}
+export async function combineLayers(dataset: number, nome: string, camadas: number[]) {
+  return (
+    await axios.post<{ camadaId: number; quantidade: number }>(
+      `/conjuntos/${dataset}/camadas/combinar`,
+      { nome, camadas },
+      { timeout: 310000 },
+    )
+  ).data
+}
+export type ResultMap = import('geojson').FeatureCollection & { aviso?: string }
+
+export async function loadResultMap(
+  feature: number,
+  indicator: string,
+  parameters: Record<string, unknown>,
+) {
+  return (
+    await axios.post<ResultMap>(`/imoveis/${feature}/indicadores/${indicator}/mapa`, parameters, {
+      timeout: 310000,
+    })
+  ).data
 }
