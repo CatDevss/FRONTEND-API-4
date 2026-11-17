@@ -434,7 +434,7 @@ function discard() {
 }
 watch(discardDialog, (open) => {
   if (!open) {
-    // The confirm event is emitted synchronously before this watcher runs.
+    // O evento de confirmação ocorre antes desta atualização.
     pendingAction = null
     leaveDecision?.(false)
     leaveDecision = null

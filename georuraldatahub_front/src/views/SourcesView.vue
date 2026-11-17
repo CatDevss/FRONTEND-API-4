@@ -10,37 +10,65 @@
       </div>
 
       ```
-      <v-btn v-if="can('sources.create')" color="primary" prepend-icon="mdi-plus" @click="openCreate">
+      <v-btn
+        v-if="can('sources.create')"
+        color="primary"
+        prepend-icon="mdi-plus"
+        @click="openCreate"
+      >
         Cadastrar fonte
       </v-btn>
     </header>
 
     <v-alert v-if="createdSource" type="success" variant="tonal" class="mb-4" role="status">
-      Fonte {{ createdSource.name }} cadastrada.
-      O próximo passo é definir os campos de validação.
+      Fonte {{ createdSource.name }} cadastrada. O próximo passo é definir os campos de validação.
 
       <v-btn :to="{ path: '/dictionaries', query: { source: createdSource.id } }" variant="text">
         Configurar dicionário
       </v-btn>
     </v-alert>
 
-    <v-alert v-if="successMessage" type="success" variant="tonal" class="mb-4" closable
-      @click:close="successMessage = ''">
+    <v-alert
+      v-if="successMessage"
+      type="success"
+      variant="tonal"
+      class="mb-4"
+      closable
+      @click:close="successMessage = ''"
+    >
       {{ successMessage }}
     </v-alert>
 
     <div class="sources-toolbar">
-      <v-text-field v-model="search" label="Buscar fonte por nome, URL ou descrição" prepend-inner-icon="mdi-magnify"
-        variant="outlined" density="compact" hide-details clearable />
+      <v-text-field
+        v-model="search"
+        label="Buscar fonte por nome, URL ou descrição"
+        prepend-inner-icon="mdi-magnify"
+        variant="outlined"
+        density="compact"
+        hide-details
+        clearable
+      />
 
-      <v-select v-model="statusFilter" label="Status" :items="statusOptions" variant="outlined" density="compact"
-        hide-details style="max-width: 180px" />
+      <v-select
+        v-model="statusFilter"
+        label="Status"
+        :items="statusOptions"
+        variant="outlined"
+        density="compact"
+        hide-details
+        style="max-width: 180px"
+      />
 
-      <span class="text-caption text-medium-emphasis">
-        {{ filteredSources.length }} fonte(s)
-      </span>
+      <span class="text-caption text-medium-emphasis"> {{ filteredSources.length }} fonte(s) </span>
 
-      <v-btn variant="text" :loading="loading" :disabled="loading" prepend-icon="mdi-refresh" @click="load">
+      <v-btn
+        variant="text"
+        :loading="loading"
+        :disabled="loading"
+        prepend-icon="mdi-refresh"
+        @click="load"
+      >
         Atualizar
       </v-btn>
     </div>
@@ -63,14 +91,23 @@
               {{ source.name }}
             </h2>
 
-            <v-chip :color="isActive(source) ? 'success' : 'default'"
-              :prepend-icon="isActive(source) ? 'mdi-check-circle' : 'mdi-close-circle'" size="small" variant="tonal">
+            <v-chip
+              :color="isActive(source) ? 'success' : 'default'"
+              :prepend-icon="isActive(source) ? 'mdi-check-circle' : 'mdi-close-circle'"
+              size="small"
+              variant="tonal"
+            >
               {{ isActive(source) ? 'Ativa' : 'Inativa' }}
             </v-chip>
           </div>
 
-          <a v-if="source.url" :href="source.url" target="_blank" rel="noopener noreferrer"
-            class="source-url text-caption">
+          <a
+            v-if="source.url"
+            :href="source.url"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="source-url text-caption"
+          >
             {{ source.url }}
           </a>
 
@@ -80,20 +117,38 @@
         </div>
 
         <div class="source-actions">
-          <v-btn v-if="can('sources.update')" variant="tonal" size="small" prepend-icon="mdi-pencil-outline"
-            @click="openEdit(source)">
+          <v-btn
+            v-if="can('sources.update')"
+            variant="tonal"
+            size="small"
+            prepend-icon="mdi-pencil-outline"
+            @click="openEdit(source)"
+          >
             Editar
           </v-btn>
 
-          <v-btn v-if="can('sources.update')" :color="isActive(source) ? 'warning' : 'success'"
-            :prepend-icon="isActive(source) ? 'mdi-pause-circle-outline' : 'mdi-check-circle-outline'" variant="tonal"
-            size="small" :loading="changingStatusId === source.id" :disabled="changingStatusId !== null"
-            @click="toggleStatus(source)">
+          <v-btn
+            v-if="can('sources.update')"
+            :color="isActive(source) ? 'warning' : 'success'"
+            :prepend-icon="
+              isActive(source) ? 'mdi-pause-circle-outline' : 'mdi-check-circle-outline'
+            "
+            variant="tonal"
+            size="small"
+            :loading="changingStatusId === source.id"
+            :disabled="changingStatusId !== null"
+            @click="toggleStatus(source)"
+          >
             {{ isActive(source) ? 'Desativar' : 'Ativar' }}
           </v-btn>
 
-          <v-btn v-if="can('dictionaries.read')" :to="{ path: '/dictionaries', query: { source: source.id } }"
-            variant="tonal" size="small" prepend-icon="mdi-book-open-outline">
+          <v-btn
+            v-if="can('dictionaries.read')"
+            :to="{ path: '/dictionaries', query: { source: source.id } }"
+            variant="tonal"
+            size="small"
+            prepend-icon="mdi-book-open-outline"
+          >
             {{ can('dictionaries.manage') ? 'Configurar dicionários' : 'Consultar dicionários' }}
           </v-btn>
         </div>
@@ -115,14 +170,23 @@
         }}
       </p>
 
-      <v-btn v-if="!search && can('sources.create')" color="primary" class="mt-4" @click="openCreate">
+      <v-btn
+        v-if="!search && can('sources.create')"
+        color="primary"
+        class="mt-4"
+        @click="openCreate"
+      >
         Cadastrar fonte
       </v-btn>
     </div>
 
-    <DataSourceDialog v-if="currentUserId && (can('sources.create') || can('sources.update'))" v-model="dialog"
-      :user-id="currentUserId" :source="selectedSource" @saved="handleSaved" />
-
+    <DataSourceDialog
+      v-if="currentUserId && (can('sources.create') || can('sources.update'))"
+      v-model="dialog"
+      :user-id="currentUserId"
+      :source="selectedSource"
+      @saved="handleSaved"
+    />
   </div>
 </template>
 
@@ -160,7 +224,7 @@ let pendingReload = false
 let inFlightLoad: Promise<void> | null = null
 
 function isActive(source: Source): boolean {
-  return source.status === 1 
+  return source.status === 1
 }
 
 const filteredSources = computed(() => {
@@ -168,10 +232,9 @@ const filteredSources = computed(() => {
 
   return sources.value
     .filter((source) => {
-      const matchesSearch =
-        `${source.name} ${source.url} ${source.description || ''}`
-          .toLocaleLowerCase('pt-BR')
-          .includes(query)
+      const matchesSearch = `${source.name} ${source.url} ${source.description || ''}`
+        .toLocaleLowerCase('pt-BR')
+        .includes(query)
 
       const matchesStatus =
         statusFilter.value === 'all' ||
@@ -180,10 +243,7 @@ const filteredSources = computed(() => {
 
       return matchesSearch && matchesStatus
     })
-    .sort(
-      (a, b) =>
-        sourceOrder.compare(a.name, b.name) || a.id - b.id,
-    )
+    .sort((a, b) => sourceOrder.compare(a.name, b.name) || a.id - b.id)
 })
 
 async function load() {
@@ -208,8 +268,7 @@ async function load() {
         .get<Source[]>('/fontes')
         .then(({ data }) => {
           sources.value = [...data].sort(
-            (a, b) =>
-              sourceOrder.compare(a.name, b.name) || a.id - b.id,
+            (a, b) => sourceOrder.compare(a.name, b.name) || a.id - b.id,
           )
         })
         .catch((e) => {
@@ -251,7 +310,6 @@ async function handleSaved(source: Source) {
   await load()
 }
 
-
 async function toggleStatus(source: Source) {
   const activate = !isActive(source)
 
@@ -272,7 +330,9 @@ async function toggleStatus(source: Source) {
 
 onMounted(load)
 usePageRefresh(load)
-onDeactivated(() => { dialog.value = false })
+onDeactivated(() => {
+  dialog.value = false
+})
 </script>
 
 <style scoped>

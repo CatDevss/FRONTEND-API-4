@@ -94,7 +94,6 @@ const props = defineProps<{
   disabled?: boolean
 }>()
 
-// O componente recebe e atualiza a lista do componente pai via v-model.
 const model = defineModel<File[]>({ default: () => [] })
 
 const fileInput = ref<HTMLInputElement | null>(null)

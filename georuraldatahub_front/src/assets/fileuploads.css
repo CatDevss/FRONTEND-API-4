@@ -284,7 +284,6 @@
   border-collapse: collapse;
 }
 
-/* Cabeçalho: todas as colunas centralizadas */
 .files-table :deep(th) {
   padding: 14px 10px !important;
   font-size: 13px;
@@ -295,7 +294,6 @@
   border-bottom: 1px solid var(--glass-outer-border);
 }
 
-/* Células */
 .files-table :deep(td) {
   padding: 12px 10px !important;
   text-align: center;
@@ -303,7 +301,6 @@
   border-color: var(--glass-outer-border) !important;
 }
 
-/* Largura das colunas */
 .files-table :deep(th:nth-child(1)),
 .files-table :deep(td:nth-child(1)) {
   width: 22%;
@@ -339,12 +336,10 @@
   width: 18%;
 }
 
-/* Efeito ao passar o mouse pela linha */
 .file-row:hover {
   background: rgba(var(--v-theme-on-surface), 0.025);
 }
 
-/* Identificação do arquivo */
 .file-identity {
   display: flex;
   align-items: center;

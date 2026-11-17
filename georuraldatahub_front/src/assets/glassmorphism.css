@@ -1,27 +1,14 @@
-/* ============================================================
-   GeoRural DataHub — glassmorphism "espaço" (estilo Apple, dark)
-   Fundo escuro com campo de estrelas + cards em vidro fosco.
-   Cores primary/secondary da marca (laranja/âmbar) mantidas —
-   este arquivo só ajusta superfícies, fundo e contraste de texto.
-   ============================================================ */
-
 :root {
-  /* Painel externo — vidro bem sutil, quase invisível, só organiza o layout */
   --glass-outer-bg: rgba(255, 240, 225, 0.035);
   --glass-outer-border: rgba(255, 255, 255, 0.07);
 
-  /* "Tiles" internas (fonte selecionável, resumo, etc.) — vidro mais presente */
   --glass-tile-bg: linear-gradient(160deg, rgba(90, 55, 34, 0.5), rgba(30, 20, 16, 0.55));
   --glass-tile-border: rgba(255, 255, 255, 0.1);
 
   --glass-shadow: 0 10px 34px rgba(0, 0, 0, 0.45);
 
-  /* Fundo estrelado — gradiente quente/frio escuro por trás do céu de estrelas */
-  --space-gradient: radial-gradient(
-      1200px 700px at 15% 10%,
-      rgba(120, 60, 20, 0.16) 0%,
-      transparent 55%
-    ),
+  --space-gradient:
+    radial-gradient(1200px 700px at 15% 10%, rgba(120, 60, 20, 0.16) 0%, transparent 55%),
     linear-gradient(150deg, #140e0a 0%, #0c0a10 45%, #050408 100%);
 }
 
@@ -35,7 +22,6 @@ body {
   background-attachment: fixed;
 }
 
-/* Campo de estrelas por cima do gradiente, cobrindo a viewport inteira */
 body::before {
   content: '';
   position: fixed;
@@ -43,7 +29,7 @@ body::before {
   z-index: 0;
   pointer-events: none;
   background-image: url('./stars.svg');
-  background-size: 130%; /* maior que a tela, dá folga pra mover sem mostrar borda */
+  background-size: 130%;
   background-position: 0% 0%;
   background-repeat: no-repeat;
   transform-origin: center;
@@ -54,7 +40,6 @@ body::before {
     respirar-zoom 20s ease-in-out infinite alternate;
 }
 
-/* Camada extra, atrasada e mais borrada, dando um rastro visível atrás das estrelas */
 body::after {
   content: '';
   position: fixed;
@@ -77,13 +62,21 @@ body::after {
 }
 
 @keyframes derivar-estrelas {
-  from { background-position: 0% 0%; }
-  to   { background-position: 15% 10%; }
+  from {
+    background-position: 0% 0%;
+  }
+  to {
+    background-position: 15% 10%;
+  }
 }
 
 @keyframes respirar-zoom {
-  from { transform: scale(1); }
-  to   { transform: scale(1.08); }
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.08);
+  }
 }
 
 #app {
@@ -91,14 +84,12 @@ body::after {
   z-index: 1;
 }
 
-/* Deixa o fundo estrelado aparecer por trás do Vuetify */
 .v-application,
 .v-application__wrap,
 .v-main {
   background: transparent !important;
 }
 
-/* ---------- Painel externo — vidro sutil ---------- */
 .v-card,
 .v-sheet:not(.v-navigation-drawer) {
   background: var(--glass-outer-bg) !important;
@@ -117,7 +108,6 @@ body::after {
   background: transparent !important;
 }
 
-/* Texto legível sobre o vidro escuro, independentemente do tema herdado */
 .v-card:not(.v-navigation-drawer) .v-card-title {
   color: rgba(255, 255, 255, 0.94) !important;
 }
@@ -128,7 +118,6 @@ body::after {
   color: rgba(255, 255, 255, 0.88) !important;
 }
 
-/* ---------- Tiles internas — vidro mais presente, tom quente ---------- */
 .v-card .v-card {
   background: var(--glass-tile-bg) !important;
   border: 1px solid var(--glass-tile-border) !important;
@@ -138,7 +127,6 @@ body::after {
   backdrop-filter: blur(16px) saturate(160%);
 }
 
-/* Tabela some no fundo do card de vidro */
 .v-table {
   background: transparent !important;
   color: rgba(255, 255, 255, 0.88);
@@ -148,7 +136,6 @@ body::after {
   color: rgba(255, 255, 255, 0.7) !important;
 }
 
-/* ---------- Menu lateral — quase invisível, deixa as estrelas passarem ---------- */
 .v-navigation-drawer {
   background: rgba(10, 8, 10, 0.4) !important;
   -webkit-backdrop-filter: blur(22px) saturate(140%);
@@ -156,14 +143,12 @@ body::after {
   border-right: 1px solid rgba(255, 255, 255, 0.06) !important;
 }
 
-/* Marca no topo do menu, em laranja */
 .v-navigation-drawer .brand-title .v-list-item-title {
   color: #ffb066;
   font-weight: 600;
   letter-spacing: 0.02em;
 }
 
-/* Item ativo do menu — realce em vidro laranja translúcido */
 .v-navigation-drawer .v-list-item--active {
   background: rgba(254, 80, 0, 0.14) !important;
   border: 1px solid rgba(254, 80, 0, 0.45) !important;
@@ -177,12 +162,10 @@ body::after {
   color: #ff8a3d !important;
 }
 
-/* ---------- Campos de formulário ---------- */
 .v-field {
   border-radius: 12px !important;
 }
 
-/* ---------- Diálogos também flutuam como painéis de vidro escuro ---------- */
 .v-overlay__content > .v-card {
   background: linear-gradient(160deg, rgba(35, 25, 20, 0.82), rgba(15, 12, 14, 0.88)) !important;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6) !important;

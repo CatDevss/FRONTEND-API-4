@@ -3,14 +3,31 @@
     <v-card :title="isEditing ? 'Editar fonte de dados' : 'Nova fonte de dados'">
       <v-form ref="form" v-model="valid" @submit.prevent="askConfirmation">
         <v-card-text>
-          <v-text-field v-model="dataSource.name" label="Nome *" :rules="[required]" maxlength="100" />
-          
-          <v-text-field v-model="dataSource.url" label="Endereço de acesso (URL) *" :rules="[required, validUrl]"
-            maxlength="200" />
+          <v-text-field
+            v-model="dataSource.name"
+            label="Nome *"
+            :rules="[required]"
+            maxlength="100"
+          />
 
-          <v-textarea v-model="dataSource.description" label="Descrição"
-            placeholder="Descreva a origem e a finalidade dos dados." hint="Campo opcional. Máximo de 500 caracteres."
-            persistent-hint counter="500" maxlength="500" rows="3" auto-grow />
+          <v-text-field
+            v-model="dataSource.url"
+            label="Endereço de acesso (URL) *"
+            :rules="[required, validUrl]"
+            maxlength="200"
+          />
+
+          <v-textarea
+            v-model="dataSource.description"
+            label="Descrição"
+            placeholder="Descreva a origem e a finalidade dos dados."
+            hint="Campo opcional. Máximo de 500 caracteres."
+            persistent-hint
+            counter="500"
+            maxlength="500"
+            rows="3"
+            auto-grow
+          />
 
           <v-alert v-if="errorMessage" type="error" variant="tonal" density="compact" class="mb-2">
             {{ errorMessage }}
@@ -20,23 +37,30 @@
         <v-card-actions>
           <v-spacer />
 
-          <v-btn type="button" :disabled="saving" @click="close">
-            Cancelar
-          </v-btn>
+          <v-btn type="button" :disabled="saving" @click="close"> Cancelar </v-btn>
 
-          <v-btn type="submit" color="primary" variant="flat" :disabled="!valid || saving" :loading="saving">
+          <v-btn
+            type="submit"
+            color="primary"
+            variant="flat"
+            :disabled="!valid || saving"
+            :loading="saving"
+          >
             {{ isEditing ? 'Salvar alterações' : 'Salvar fonte' }}
           </v-btn>
         </v-card-actions>
       </v-form>
 
-      <ConfirmDialog v-model="showConfirm" :title="isEditing ? 'Editar fonte' : 'Cadastrar fonte'" :message="isEditing
-          ? 'Deseja salvar as alterações desta fonte?'
-          : 'Deseja cadastrar esta fonte?'
-        " @confirm="save" />
+      <ConfirmDialog
+        v-model="showConfirm"
+        :title="isEditing ? 'Editar fonte' : 'Cadastrar fonte'"
+        :message="
+          isEditing ? 'Deseja salvar as alterações desta fonte?' : 'Deseja cadastrar esta fonte?'
+        "
+        @confirm="save"
+      />
     </v-card>
     ```
-
   </v-dialog>
 </template>
 
@@ -76,8 +100,7 @@ const dataSource = reactive({
   description: '',
 })
 
-const required = (value: string | null) =>
-  (value ?? '').trim() !== '' || 'Campo obrigatório'
+const required = (value: string | null) => (value ?? '').trim() !== '' || 'Campo obrigatório'
 
 const validUrl = (value: string | null) => {
   try {
@@ -162,10 +185,7 @@ async function save() {
     let savedSource: Source
 
     if (props.source) {
-      const { data } = await axios.put<Source>(
-        `/fontes/${props.source.id}`,
-        payload,
-      )
+      const { data } = await axios.put<Source>(`/fontes/${props.source.id}`, payload)
 
       savedSource = data
     } else {

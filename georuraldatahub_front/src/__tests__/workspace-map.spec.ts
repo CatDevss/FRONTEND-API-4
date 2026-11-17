@@ -4,6 +4,8 @@ import { createPinia, setActivePinia } from 'pinia'
 import { defineComponent, ref } from 'vue'
 import type { Feature, FeatureCollection } from 'geojson'
 import axios from 'axios'
+import EnvironmentalResultMap from '@/components/workspace/EnvironmentalResultMap.vue'
+import WorkspaceInspection from '@/components/workspace/WorkspaceInspection.vue'
 import WorkspaceMap from '@/components/workspace/WorkspaceMap.vue'
 import type { MapInspection } from '@/services/mapInspection'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -51,13 +53,14 @@ const leaflet = vi.hoisted(() => {
       }),
       remove: vi.fn().mockImplementation(() => attached.delete(group)),
       setStyle: vi.fn(),
+      bringToFront: vi.fn(),
       getBounds: vi.fn(() => bounds([1])),
     }
     groups.push(group)
     return group
   })
   const control = Object.assign(vi.fn(), {
-    layers: vi.fn(() => ({ addTo: vi.fn() })),
+    layers: vi.fn(() => ({ addTo: vi.fn(), addOverlay: vi.fn(), removeLayer: vi.fn() })),
     scale: vi.fn(() => ({ addTo: vi.fn() })),
     zoom: vi.fn(() => ({ addTo: vi.fn() })),
   })
@@ -414,5 +417,76 @@ describe('cached map navigation', () => {
     expect(leaflet.lib.map).toHaveBeenCalledTimes(1)
     expect(axios.get).toHaveBeenCalledTimes(requests)
     expect(leaflet.map.invalidateSize.mock.calls.length).toBeGreaterThan(resizes)
+  })
+})
+
+describe('indicator map matches workspace cartography', () => {
+  function resultMap() {
+    const polygon = features.features[2]!
+    return mount(EnvironmentalResultMap, {
+      props: {
+        data: {
+          type: 'FeatureCollection',
+          features: [
+            { ...polygon, properties: { papel: 'analise' } },
+            { ...polygon, properties: { papel: 'ICV' } },
+          ],
+        },
+      },
+      global: { stubs: { VBtn: { template: '<button><slot /></button>' } } },
+    })
+  }
+  it('uses dark streets, satellite, metric scale and bottom-right navigation', async () => {
+    const wrapper = resultMap()
+    await flushPromises()
+    expect(leaflet.lib.map).toHaveBeenCalledWith(expect.anything(), {
+      preferCanvas: true,
+      zoomControl: false,
+    })
+    expect(leaflet.lib.tileLayer).toHaveBeenCalledWith(
+      expect.stringContaining('openstreetmap'),
+      expect.objectContaining({ className: 'map-tiles-dark', maxZoom: 19 }),
+    )
+    expect(leaflet.lib.tileLayer).toHaveBeenCalledWith(
+      expect.stringContaining('World_Imagery'),
+      expect.anything(),
+    )
+    expect(leaflet.lib.control.layers).toHaveBeenCalledWith(
+      expect.objectContaining({ 'Ruas (escuro)': expect.anything(), Satélite: expect.anything() }),
+      undefined,
+      { position: 'bottomright' },
+    )
+    expect(leaflet.lib.control.zoom).toHaveBeenCalledWith({ position: 'bottomright' })
+    expect(leaflet.lib.control.scale).toHaveBeenCalledWith({ imperial: false })
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Ver Paraná')!
+      .trigger('click')
+    expect(leaflet.map.fitBounds).toHaveBeenLastCalledWith(expect.anything(), { padding: [24, 24] })
+  })
+  it('inspects only visible contribution layers and supports opacity', async () => {
+    const wrapper = resultMap()
+    await flushPromises()
+    const click = leaflet.map.on.mock.calls.find((c) => c[0] === 'click')![1]
+    click({ latlng: { lat: -25, lng: -49 } })
+    await flushPromises()
+    const inspection = () =>
+      wrapper.findComponent(WorkspaceInspection).props('result') as MapInspection
+    expect(inspection().groups.map((g) => g.name)).toEqual([
+      'Área de análise',
+      'Vegetação no recorte',
+    ])
+    leaflet.attached.delete(leaflet.groups[1])
+    leaflet.map.on.mock.calls.find((c) => c[0] === 'overlayadd overlayremove')![1]()
+    await flushPromises()
+    expect(inspection().groups.map((g) => g.name)).toEqual(['Área de análise'])
+    await wrapper.find('input[aria-label="Opacidade de Vegetação no recorte"]').setValue('40')
+    const style = leaflet.groups[1]!.setStyle.mock.calls.slice(-1)[0]![0]({
+      geometry: { type: 'Polygon' },
+    })
+    expect(style.opacity).toBe(0.4)
+    wrapper.findComponent(WorkspaceInspection).vm.$emit('close')
+    await flushPromises()
+    expect(wrapper.findComponent(WorkspaceInspection).exists()).toBe(false)
   })
 })

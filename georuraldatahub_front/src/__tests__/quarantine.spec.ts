@@ -522,7 +522,12 @@ describe('BE-05 quarantine', () => {
     ...report,
     records: [
       { recordIndex: 3, rawContent: '{"nome":""}', valid: false, errors: ['REQUIRED_FIELD: nome'] },
-      { recordIndex: 4, rawContent: '{"area":"abc"}', valid: false, errors: ['INVALID_TYPE: area'] },
+      {
+        recordIndex: 4,
+        rawContent: '{"area":"abc"}',
+        valid: false,
+        errors: ['INVALID_TYPE: area'],
+      },
     ],
   }
   function serveRichReport() {

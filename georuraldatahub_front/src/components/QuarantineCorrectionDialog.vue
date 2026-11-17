@@ -9,8 +9,8 @@
       <v-card-text>
         <v-alert type="info" variant="tonal" density="compact" class="mb-4">
           Corrija no campo de cada registro o que for dado do operador, como geometria, tipo ou
-          valor ausente. Campos que não existem no dicionário precisam ser incluídos pelo gestor.
-          O relatório original continua preservado. Por enquanto as correções ficam apenas neste
+          valor ausente. Campos que não existem no dicionário precisam ser incluídos pelo gestor. O
+          relatório original continua preservado. Por enquanto as correções ficam apenas neste
           popup; o envio para reavaliação será liberado na próxima etapa.
         </v-alert>
         <v-progress-linear
@@ -31,8 +31,7 @@
             <h3>Erros do arquivo</h3>
             <p class="text-body-2 text-medium-emphasis">
               Estes erros atingem o arquivo inteiro e não são corrigidos editando campos. Se o
-              problema for uma coluna ou campo ausente do dicionário, peça ao gestor para
-              incluí-lo.
+              problema for uma coluna ou campo ausente do dicionário, peça ao gestor para incluí-lo.
             </p>
             <ul class="error-list">
               <template v-for="entry in targets.fileErrors" :key="entry.recordIndex">
@@ -133,7 +132,9 @@
             Nenhum registro rejeitado no relatório.
           </p>
         </template>
-        <p v-else-if="!loading && !error">Relatório indisponível. Não presuma aprovação dos dados.</p>
+        <p v-else-if="!loading && !error">
+          Relatório indisponível. Não presuma aprovação dos dados.
+        </p>
       </v-card-text>
       <v-card-actions>
         <span v-if="changedCount" class="draft-count" role="status"
@@ -189,8 +190,9 @@ function setDraft(entry: RejectedRecord, value: string) {
   drafts.value = { ...drafts.value, [entry.recordIndex]: value ?? '' }
 }
 function restore(entry: RejectedRecord) {
-  const { [entry.recordIndex]: _discarded, ...rest } = drafts.value
-  drafts.value = rest
+  const remaining = { ...drafts.value }
+  delete remaining[entry.recordIndex]
+  drafts.value = remaining
 }
 function ownerColor(owner: ErrorOwner) {
   return owner === 'manager' ? 'warning' : owner === 'file' ? 'error' : 'primary'

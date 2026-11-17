@@ -99,6 +99,8 @@ async function setup(options: { empty?: boolean; noLayers?: boolean } = {}) {
     global: {
       plugins: [pinia, router],
       stubs: {
+        WorkspaceLayers: { template: '<section>Catálogo de camadas</section>' },
+        WorkspaceIndicators: { template: '<section>Formulário de indicadores</section>' },
         VCard: Container,
         VBtn: Button,
         VTabs: Tabs,
@@ -168,13 +170,25 @@ describe('workspace explorer and tabs', () => {
     await wrapper.find('input[type="checkbox"]').setValue(true)
     expect(workspace.isVisible(11)).toBe(true)
   })
-  it('shows Medidores without requesting or calculating indicators', async () => {
+  it('keeps map overlays out of data screens', async () => {
+    const { wrapper, workspace } = await setup()
+    workspace.activeTab = 'layers'
+    await flushPromises()
+    expect(wrapper.find('.workspace').classes()).toContain('showing-meters')
+    expect(wrapper.find('.workspace-messages').exists()).toBe(false)
+    expect(wrapper.find<HTMLElement>('.workspace-footer').element.style.display).toBe('none')
+    expect(wrapper.find<HTMLElement>('#workspace-explorer').element.style.display).toBe('none')
+    expect(wrapper.text()).toContain('Catálogo de camadas')
+    workspace.activeTab = 'map'
+    await flushPromises()
+    expect(wrapper.find<HTMLElement>('.workspace-footer').element.style.display).not.toBe('none')
+  })
+  it('opens the indicator panel while preserving map state', async () => {
     const { wrapper, workspace } = await setup()
     wrapper.findComponent(Tabs).vm.$emit('update:modelValue', 'meters')
     await flushPromises()
     expect(workspace.activeTab).toBe('meters')
-    expect(wrapper.text()).toContain('Medidores ainda não disponíveis')
-    expect(wrapper.text()).toContain('Nenhum indicador é calculado no navegador')
+    expect(wrapper.text()).toContain('Formulário de indicadores')
     expect(
       vi
         .mocked(axios.get)

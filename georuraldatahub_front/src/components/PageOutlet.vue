@@ -12,7 +12,7 @@
 <script setup lang="ts">
 import { can, sessionUser } from '@/access/session'
 
-// One instance per page, scoped to the current user/role. Query changes reuse the page.
+// Reutiliza a página por usuário e perfil, inclusive ao mudar os filtros.
 const pages = [
   'HomeView',
   'NewLoadView',

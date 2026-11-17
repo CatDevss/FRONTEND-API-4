@@ -5,7 +5,7 @@
       class="workspace"
       :class="{
         'explorer-hidden': !explorerOpen,
-        'showing-meters': workspace.activeTab === 'meters',
+        'showing-meters': workspace.activeTab !== 'map',
         inspecting: !!inspection && workspace.activeTab === 'map',
       }"
     >
@@ -22,6 +22,7 @@
         <header ref="toolbarElement" class="workspace-toolbar floating-panel">
           <div class="workspace-navigation">
             <v-btn
+              v-if="workspace.activeTab === 'map'"
               :icon="explorerOpen ? 'mdi-dock-left' : 'mdi-file-tree-outline'"
               size="small"
               variant="text"
@@ -40,16 +41,17 @@
               aria-label="Visualizações do workspace"
             >
               <v-tab value="map" prepend-icon="mdi-map-outline">Mapa</v-tab>
+              <v-tab value="layers" prepend-icon="mdi-layers-outline">Camadas</v-tab>
               <v-tab value="meters" prepend-icon="mdi-gauge">Medidores</v-tab>
             </v-tabs>
           </div>
-          <div class="dataset-context">
+          <div v-if="workspace.activeTab === 'map'" class="dataset-context">
             <span class="context-label">CONJUNTO SELECIONADO</span>
             <span class="active-dataset" :title="workspace.selectedDataset?.name">{{
               workspace.selectedDataset?.name || 'Escolha um conjunto'
             }}</span>
           </div>
-          <div class="workspace-actions">
+          <div v-if="workspace.activeTab === 'map'" class="workspace-actions">
             <v-btn
               v-if="can('ingestion.run')"
               to="/new-load"
@@ -102,14 +104,14 @@
         <div
           id="workspace-explorer"
           ref="explorerElement"
-          v-show="explorerOpen"
+          v-show="explorerOpen && workspace.activeTab === 'map'"
           class="explorer-position"
         >
           <WorkspaceExplorer @close="explorerOpen = false" @remove-file="requestRemoval" />
         </div>
 
         <main class="workspace-content">
-          <div class="workspace-messages" aria-live="polite">
+          <div v-if="workspace.activeTab === 'map'" class="workspace-messages" aria-live="polite">
             <v-alert
               v-if="workspace.membershipError"
               type="error"
@@ -189,22 +191,17 @@
           >
             <WorkspaceInspection :result="inspection" @close="mapView?.closeInspection()" />
           </div>
-          <section
+          <WorkspaceLayers
+            v-if="workspace.activeTab === 'layers'"
+            :initial-dataset="workspace.selectedDatasetId"
+          />
+          <WorkspaceIndicators
             v-if="workspace.activeTab === 'meters'"
-            class="meters-empty floating-panel"
-            aria-label="Medidores"
-          >
-            <span class="meters-icon"><v-icon icon="mdi-gauge" size="32" /></span>
-            <span class="context-label mt-4">INDICADORES AMBIENTAIS</span>
-            <h2 class="text-h6 mt-2">Medidores ainda não disponíveis</h2>
-            <p class="text-body-2 text-medium-emphasis mt-2">
-              Os indicadores serão exibidos quando o serviço de cálculo estiver integrado. Nenhum
-              indicador é calculado no navegador.
-            </p>
-          </section>
+            @manage-layers="workspace.activeTab = 'layers'"
+          />
         </main>
 
-        <footer ref="footerElement" class="workspace-footer">
+        <footer v-show="workspace.activeTab === 'map'" ref="footerElement" class="workspace-footer">
           <div
             v-if="workspace.activeTab === 'map'"
             class="map-tools floating-panel"
@@ -279,6 +276,8 @@ import { useRoute } from 'vue-router'
 import { can } from '@/access/session'
 import { useWorkspaceStore } from '@/stores/workspace'
 import WorkspaceExplorer from '@/components/workspace/WorkspaceExplorer.vue'
+import WorkspaceLayers from '@/components/workspace/WorkspaceLayers.vue'
+import WorkspaceIndicators from '@/components/workspace/WorkspaceIndicators.vue'
 import WorkspaceMap from '@/components/workspace/WorkspaceMap.vue'
 import WorkspaceInspection from '@/components/workspace/WorkspaceInspection.vue'
 import type { MapInspection } from '@/services/mapInspection'
@@ -589,8 +588,7 @@ onDeactivated(() => {
   gap: 12px;
   padding: 18px;
 }
-.hint-icon,
-.meters-icon {
+.hint-icon {
   display: grid;
   place-items: center;
   flex-shrink: 0;
@@ -609,23 +607,6 @@ onDeactivated(() => {
   font-size: 12px;
   line-height: 1.65;
   color: rgba(var(--v-theme-on-surface), 0.65);
-}
-.meters-empty {
-  min-height: 0;
-  width: min(100%, 480px);
-  margin: auto;
-  display: flex;
-  align-items: center;
-  flex-direction: column;
-  text-align: center;
-  padding: 32px;
-  overflow: auto;
-  pointer-events: auto;
-}
-.meters-icon {
-  width: 64px;
-  height: 64px;
-  border-radius: 20px;
 }
 .workspace-footer {
   grid-column: 1 / -1;
@@ -781,9 +762,6 @@ onDeactivated(() => {
   .explorer-hidden .workspace-footer {
     grid-row: 3;
   }
-  .meters-empty {
-    padding: 20px;
-  }
   .workspace-hint {
     padding: 14px;
   }
@@ -806,6 +784,41 @@ onDeactivated(() => {
   }
   .workspace-status {
     flex-wrap: wrap;
+  }
+}
+/* As telas de dados usam uma única área de rolagem. */
+.showing-meters .workspace-overlays {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  padding: 16px;
+}
+.showing-meters .workspace-content {
+  grid-column: 1;
+  grid-row: 2;
+  display: block;
+  overflow: auto;
+  pointer-events: auto;
+  scrollbar-width: thin;
+  padding: 8px 12px 32px;
+}
+.showing-meters .workspace-content > :deep(section) {
+  width: 100%;
+  max-width: 1120px;
+  min-height: 100%;
+  margin: 0 auto;
+  overflow: visible;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  padding: 16px 8px;
+}
+@container (max-width: 760px) {
+  .showing-meters .workspace-overlays {
+    padding: 8px;
+    gap: 8px;
+  }
+  .showing-meters .workspace-content {
+    padding: 0 8px 24px;
   }
 }
 </style>

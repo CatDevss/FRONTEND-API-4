@@ -3,8 +3,7 @@ import axios from 'axios'
 import { sessionUser, setSessionUser, roles, type Role } from './session'
 import { apiError, type IngestionUser } from '@/services/contracts'
 
-// Development preference only: store an ID, then re-read its current role from the API.
-// No password, token or serialized permission matrix is persisted.
+// Salva apenas o ID de desenvolvimento; consulta as permissões atuais na API.
 const key = 'georural.development-user-id'
 export const previewUsers = ref<(IngestionUser & { label: string })[]>([])
 export const previewLoading = ref(false)
@@ -25,7 +24,7 @@ function remember(id: number | null) {
     if (id === null) sessionStorage.removeItem(key)
     else sessionStorage.setItem(key, String(id))
   } catch {
-    // Restricted storage must not prevent using the in-memory preview.
+    // Sem acesso ao armazenamento, mantém a sessão em memória.
   }
 }
 watch(
@@ -67,7 +66,7 @@ export async function loadPreviewUsers(force = false) {
       }
     } catch (e) {
       previewError.value = apiError(e, 'Não foi possível carregar os cadastros para prévia.')
-      // Keep the saved ID so a transient API outage can be retried.
+      // Preserva o ID para tentar novamente após uma falha da API.
     } finally {
       previewLoading.value = false
       pending = null
