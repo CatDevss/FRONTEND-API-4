@@ -55,10 +55,16 @@ export async function listLayers(busca: string, page = 0, filters: LayerFilters 
     })
   ).data
 }
-export async function listFeatures(layer: number, busca: string, campo: string, page = 0) {
+export async function listFeatures(
+  layer: number,
+  busca: string,
+  campo: string,
+  page = 0,
+  size = 20,
+) {
   return (
     await axios.get<Page<Feature>>(`/ambiental/camadas/${layer}/feicoes`, {
-      params: { busca, campo: campo || undefined, page, size: 20 },
+      params: { busca, campo: campo || undefined, page, size },
     })
   ).data
 }
@@ -110,12 +116,12 @@ export async function listVersions(dataset: number, busca: string, page = 0) {
     })
   ).data
 }
-export async function importLayer(dataset: number, version: number) {
+export async function importLayer(dataset: number, version: number, repair = false) {
   return (
     await axios.post<{ camadaId: number; quantidade: number }>(
       `/conjuntos/${dataset}/versoes/${version}/camada-oracle`,
       undefined,
-      { timeout: 310000 },
+      { timeout: 310000, ...(repair ? { params: { corrigirGeometria: true } } : {}) },
     )
   ).data
 }

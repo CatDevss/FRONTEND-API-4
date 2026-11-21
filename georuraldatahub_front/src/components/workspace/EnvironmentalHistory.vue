@@ -1,5 +1,9 @@
 <template>
-  <section ref="panelElement" class="history-panel" aria-label="Histórico de cálculos">
+  <section
+    ref="panelElement"
+    class="history-panel environmental-surface"
+    aria-label="Histórico de cálculos"
+  >
     <template v-if="!detail">
       <h3>Cálculos salvos</h3>
       <p class="note">Abra um registro para consultar e exportar o resultado armazenado.</p>
@@ -13,6 +17,7 @@
           hide-details
           @keyup.enter="load(0)"
         /><v-select
+          :menu-props="{ contentClass: 'environmental-menu' }"
           v-model="indicator"
           :items="filters"
           label="Indicador"

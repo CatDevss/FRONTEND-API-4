@@ -1,4 +1,5 @@
 import axios from 'axios'
+import type { AnalysisArea, AreaCalculation } from './environmentalBatch'
 export interface CalculationSnapshot {
   name: string
   indicator: string
@@ -84,6 +85,78 @@ export function reportRows(snapshot: CalculationSnapshot): ReportRow[] {
   if (!sources.length) rows.push(['Fontes', 'Origem', 'Não disponível', ''])
   return rows
 }
+export function batchReportRows(
+  areas: AnalysisArea[],
+  entries: AreaCalculation[],
+  indicator: string,
+  parameters: Record<string, unknown>,
+): ReportRow[] {
+  const rows: ReportRow[] = [
+    ['Área / seção', 'Campo', 'Valor', 'Unidade'],
+    ['Relatório', 'Indicador', indicator.toUpperCase(), ''],
+    ['Relatório', 'Áreas solicitadas', areas.length, ''],
+    ['Relatório', 'Resultados disponíveis', entries.filter((e) => e.snapshot).length, ''],
+    [
+      'Relatório',
+      'Observação',
+      'Resultados independentes por área; sem soma de áreas ou percentuais.',
+      '',
+    ],
+  ]
+  for (const [key, v] of Object.entries(parameters))
+    rows.push(['Parâmetros', key, Array.isArray(v) ? v.join(', ') : value(v), ''])
+  const indexed = new Map(entries.map((e) => [e.area.id, e]))
+  const sources = new Map<string, Record<string, unknown>>()
+  for (const area of areas) {
+    const entry = indexed.get(area.id),
+      snapshot = entry?.snapshot
+    rows.push([area.name, 'Identificador da feição', area.id, ''])
+    if (!snapshot) {
+      rows.push([
+        area.name,
+        'Situação',
+        entry?.unconfirmed ? 'Sem confirmação' : entry?.error ? 'Falhou' : 'Não processada',
+        '',
+      ])
+      if (entry?.error) rows.push([area.name, 'Motivo', entry.error, ''])
+      continue
+    }
+    const r = snapshot.result
+    rows.push(
+      [
+        area.name,
+        'Situação',
+        r.calculoId ? `Salvo no histórico #${r.calculoId}` : 'Prévia não salva',
+        '',
+      ],
+      [area.name, 'Área analisada', value(r.areaImovelHa), 'ha'],
+      [area.name, 'Data do cálculo', value(r.calculadoEm), ''],
+      [area.name, 'Regra', value(r.regra), ''],
+      [area.name, 'Projeção', value(r.projecaoCalculo), ''],
+    )
+    for (const group of metricGroups) {
+      const metrics = r[group]
+      if (metrics && typeof metrics === 'object')
+        for (const [key, [label, unit]] of Object.entries(metricLabels))
+          if (key in metrics)
+            rows.push([
+              area.name,
+              `${group} · ${label}`,
+              value((metrics as Record<string, unknown>)[key]),
+              unit,
+            ])
+    }
+    if (Array.isArray(r.fontes))
+      for (const source of r.fontes as Record<string, unknown>[])
+        sources.set(JSON.stringify(source), source)
+  }
+  for (const [index, source] of [...sources.values()].entries())
+    for (const [key, v] of Object.entries(source))
+      rows.push([`Fonte ${index + 1}`, key, value(v), ''])
+  if (!sources.size) rows.push(['Fontes', 'Origem', 'Não disponível', ''])
+  return rows
+}
+
 export function reportCsv(rows: ReportRow[]): string {
   return (
     '\uFEFF' +

@@ -6,6 +6,7 @@ import { trackDataMutation } from '@/composables/pageData'
 import App from './App.vue'
 import router from './router'
 import './assets/glassmorphism.css'
+import './assets/environmental.css'
 
 axios.defaults.baseURL = import.meta.env.VITE_API_BASE_URL
 axios.interceptors.response.use(trackDataMutation)

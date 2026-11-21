@@ -1,9 +1,9 @@
 <template>
-  <section class="layers-panel">
+  <section class="layers-panel environmental-surface">
     <header class="page-heading">
       <div>
         <h2>Camadas</h2>
-        <p>Prepare os arquivos que serão usados nas análises.</p>
+        <p>Consulte os dados preparados ou crie uma camada a partir de um arquivo tratado.</p>
       </div>
       <v-btn
         v-if="can('ingestion.run')"
@@ -11,9 +11,27 @@
         prepend-icon="mdi-plus"
         :disabled="busy"
         @click="openImport"
-        >Nova camada</v-btn
+        >Preparar camada</v-btn
       >
     </header>
+    <div class="workflow-guide">
+      <div>
+        <strong>1. Arquivo tratado</strong
+        ><span>Escolha um arquivo aprovado dentro de um conjunto.</span>
+      </div>
+      <div>
+        <strong>2. Camada preparada</strong
+        ><span>Os registros são gravados como feições no Oracle Spatial.</span>
+      </div>
+      <div>
+        <strong>3. Indicador e relatório</strong
+        ><span>Escolha uma área e as camadas de dados nos Medidores.</span>
+      </div>
+    </div>
+    <p class="note">
+      Uma camada reúne várias feições. Por exemplo: uma camada de municípios contém um polígono para
+      cada município.
+    </p>
     <div class="catalog-search">
       <v-text-field
         v-model="search"
@@ -32,6 +50,7 @@
     </div>
     <div v-if="filtersOpen" class="filters secondary-filters">
       <v-autocomplete
+        :menu-props="{ contentClass: 'environmental-menu' }"
         v-model="dataset"
         :items="datasets"
         item-title="name"
@@ -44,6 +63,7 @@
         :disabled="busy"
       />
       <v-select
+        :menu-props="{ contentClass: 'environmental-menu' }"
         v-model="type"
         :items="geometryTypes"
         label="Tipo"
@@ -70,15 +90,21 @@
     >
     <v-alert v-if="error" type="error" class="my-3">{{ error }}</v-alert>
     <v-alert v-if="success" type="success" class="my-3">{{ success }}</v-alert>
+    <div v-if="success" class="completion-action">
+      <v-btn color="primary" variant="tonal" @click="goToIndicators">Ir para Medidores</v-btn
+      ><span class="note"
+        >A camada não define seu papel no indicador. Você escolhe esse uso na próxima tela.</span
+      >
+    </div>
     <div v-if="!loading && !rows.length" class="empty">
-      Nenhuma camada encontrada. Importe uma versão tratada ou ajuste os filtros.
+      Nenhuma camada encontrada. Use “Preparar camada” ou ajuste os filtros.
     </div>
     <v-list v-else class="catalog" bg-color="transparent"
       ><v-list-item
         v-for="layer in rows"
         :key="layer.id"
         :title="layer.name"
-        :subtitle="`${layer.dataset} · ${layer.source} · ${geometryLabel(layer.geometry)} · ${layer.features} feições`"
+        :subtitle="`${layer.dataset} · ${layer.source} · ${geometrySummary(layer)} · ${layer.features} feições`"
         prepend-icon="mdi-layers-outline"
         @click="details(layer.id)"
         ><template #append><v-icon icon="mdi-chevron-right" /></template></v-list-item
@@ -91,14 +117,16 @@
       >
     </div>
     <v-dialog v-model="showImport" max-width="720" :persistent="busy" scrollable>
-      <v-card class="import-card" rounded="lg">
-        <v-card-title class="pt-6 px-6">Nova camada</v-card-title>
+      <v-card class="import-card environmental-surface" rounded="lg">
+        <v-card-title class="pt-6 px-6">Preparar camada para análise</v-card-title>
         <v-card-text class="px-6">
           <p class="import-intro">
-            Escolha um arquivo já tratado. Seus registros serão preparados para uso nos indicadores.
+            Selecione o conjunto e o arquivo tratado. O original será preservado; uma nova camada
+            ficará disponível para os indicadores.
           </p>
           <v-autocomplete
-            v-model="dataset"
+            :menu-props="{ contentClass: 'environmental-menu' }"
+            v-model="importDataset"
             :items="datasets"
             item-title="name"
             item-value="id"
@@ -107,7 +135,7 @@
             density="comfortable"
             :disabled="busy"
           />
-          <template v-if="dataset">
+          <template v-if="importDataset">
             <h3 class="file-heading">2. Escolha o arquivo</h3>
             <div class="catalog-search">
               <v-text-field
@@ -129,7 +157,9 @@
             </div>
             <v-progress-linear v-if="versionsLoading" indeterminate color="primary" class="my-3" />
             <div v-else-if="!versions.length" class="file-empty">
-              Nenhum arquivo tratado disponível neste conjunto.
+              Nenhum arquivo disponível para preparar. Arquivos já importados não aparecem aqui;
+              confira o catálogo de camadas. Se ainda não importou, conclua o tratamento e a
+              associação ao conjunto.
             </div>
             <div v-else class="file-choices" role="radiogroup" aria-label="Arquivo tratado">
               <button
@@ -171,9 +201,33 @@
               >
             </div>
           </template>
-          <v-alert v-if="dialogError" type="error" class="mt-3">{{ dialogError }}</v-alert>
+          <v-alert v-if="dialogError" type="error" class="mt-3"
+            ><template v-if="dialogError.includes('13349')">
+              Um polígono deste arquivo tem um contorno que se cruza. A camada não foi criada. Você
+              pode permitir uma tentativa de correção abaixo ou revisar o arquivo de origem.
+              <details class="repair-diagnostic">
+                <summary>Detalhes técnicos</summary>
+                {{ dialogError }}
+              </details> </template
+            ><template v-else>{{ dialogError }}</template></v-alert
+          >
+          <div v-if="versionId" class="repair-option">
+            <v-checkbox
+              v-model="repairGeometry"
+              :disabled="busy"
+              hide-details
+              density="compact"
+              label="Permitir correção de contornos que se cruzam"
+            />
+            <p class="note">
+              Opcional. O reparo pode alterar o contorno e a área utilizada nos indicadores. O
+              arquivo original é preservado e a correção aplicada fica registrada nos atributos da
+              feição. Confira a geometria no mapa antes de usar o resultado.
+            </p>
+          </div>
           <p v-if="versionId" class="import-summary">
-            O arquivo escolhido pode gerar várias feições dentro de uma única camada.
+            Uma camada será criada com as feições desse arquivo. Após preparar, use “Ir para
+            Medidores” para escolher o indicador.
           </p>
           <p v-if="busy" class="import-summary" role="status">
             Preparando os registros. Isso pode levar alguns minutos.
@@ -187,15 +241,16 @@
             :loading="busy"
             :disabled="!versionId || versionsLoading"
             @click="importSelected"
-            >Criar camada</v-btn
+            >Preparar camada</v-btn
           ></v-card-actions
         >
       </v-card>
     </v-dialog>
     <v-dialog v-model="showCombine" max-width="680" :persistent="busy"
-      ><v-card title="Combinar camadas"
+      ><v-card class="environmental-surface" title="Combinar camadas"
         ><v-card-text>
           <v-text-field
+            variant="outlined"
             v-model="combinedName"
             label="Nome da camada composta"
             maxlength="200"
@@ -223,31 +278,59 @@
         ></v-card
       ></v-dialog
     >
-    <v-dialog v-model="showDetails" max-width="680"
-      ><v-card :title="detail?.layer.name ?? 'Camada'"
-        ><v-card-text v-if="detail"
-          ><dl>
-            <dt>Tipo</dt>
-            <dd>{{ geometryLabel(detail.layer.geometry) }}</dd>
-            <dt>Feições</dt>
-            <dd>{{ detail.layer.features }}</dd>
+    <v-dialog v-model="showDetails" max-width="760" scrollable>
+      <v-card v-if="detail" class="environmental-surface layer-detail-card">
+        <header class="layer-detail-heading">
+          <span class="layer-detail-icon"><v-icon icon="mdi-layers-outline" size="26" /></span>
+          <div>
+            <span class="detail-eyebrow">Camada pronta para análise</span>
+            <h2>{{ friendlyName(detail.layer.name) }}</h2>
+          </div>
+        </header>
+        <v-card-text class="layer-detail-body"
+          ><div class="layer-facts">
+            <div>
+              <span>Feições</span
+              ><strong>{{ detail.layer.features.toLocaleString('pt-BR') }}</strong>
+            </div>
+            <div>
+              <span>Geometria</span><strong>{{ geometrySummary(detail.layer) }}</strong>
+            </div>
+          </div>
+          <p class="detail-explanation">
+            Cada feição representa uma área ou um registro. Nos indicadores, você pode escolher uma,
+            várias ou todas as áreas poligonais.
+          </p>
+          <dl class="layer-context">
             <dt>Conjunto</dt>
             <dd>{{ detail.layer.dataset }}</dd>
-            <dt>SRID</dt>
-            <dd>{{ detail.layer.srid }}</dd>
+            <dt>Coordenadas</dt>
+            <dd>
+              EPSG:{{ detail.layer.srid
+              }}<span v-if="detail.layer.srid === 4326"> · WGS84, longitude e latitude</span>
+            </dd>
           </dl>
-          <h4 class="mt-4">Origem</h4>
-          <ul>
-            <li
-              v-for="origin in detail.origins.length ? detail.origins : [detail.layer]"
-              :key="origin.id"
-            >
-              {{ origin.name }} · {{ origin.file }} · {{ origin.source }}
-            </li>
-          </ul></v-card-text
-        ><v-card-actions><v-btn @click="showDetails = false">Fechar</v-btn></v-card-actions></v-card
-      ></v-dialog
-    >
+          <h3 class="origins-heading">Arquivos e fontes</h3>
+          <article
+            v-for="origin in detail.origins.length ? detail.origins : [detail.layer]"
+            :key="origin.id"
+            class="origin-card"
+          >
+            <v-icon icon="mdi-file-document-outline" size="22" />
+            <div>
+              <strong>{{ origin.file || origin.name }}</strong
+              ><span>{{ origin.source }}</span
+              ><small v-if="origin.name && origin.name !== origin.file">{{ origin.name }}</small>
+            </div>
+          </article> </v-card-text
+        ><v-card-actions class="detail-actions"
+          ><v-btn @click="showDetails = false">Fechar</v-btn
+          ><v-btn color="primary" variant="flat" prepend-icon="mdi-gauge" @click="goToIndicators"
+            >Ir para Medidores</v-btn
+          ></v-card-actions
+        >
+      </v-card>
+    </v-dialog>
   </section>
 </template>
 <script setup lang="ts">
@@ -265,6 +348,7 @@ import {
   type ImportableVersion,
 } from '@/services/environmentalIndicators'
 import EnvironmentalLayerPicker from './EnvironmentalLayerPicker.vue'
+const emit = defineEmits<{ useIndicators: [] }>()
 const filtersOpen = ref(false)
 const props = defineProps<{ initialDataset?: number | null }>()
 const dataset = ref<number | null>(props.initialDataset ?? null),
@@ -280,6 +364,8 @@ const rows = ref<Layer[]>([]),
   error = ref(''),
   success = ref(''),
   dialogError = ref('')
+const repairGeometry = ref(false)
+const importDataset = ref<number | null>(null)
 const showImport = ref(false),
   versions = ref<ImportableVersion[]>([]),
   versionId = ref<number | null>(null),
@@ -304,6 +390,14 @@ const geometryTypes = [
 ]
 const geometryLabel = (value: string) =>
   geometryTypes.find((t) => t.value === value)?.title ?? value
+function friendlyName(name: string) {
+  return name.replace(/\.(geojson|json|csv|zip|gpkg)$/i, '').replace(/_/g, ' ')
+}
+function geometrySummary(layer: Layer) {
+  return layer.geometry === 'MIXED' && layer.features > 0 && layer.polygons === layer.features
+    ? 'Polígonos e multipolígonos'
+    : geometryLabel(layer.geometry)
+}
 const cache = new Map<number, Layer>()
 function cacheLayers(items: Layer[]) {
   for (const item of items) cache.set(item.id, item)
@@ -347,13 +441,13 @@ async function load(next: number) {
   }
 }
 async function loadVersions(next: number) {
-  if (!dataset.value) return
+  if (!importDataset.value) return
   const request = ++versionEpoch
   versionsLoading.value = true
   versionId.value = null
   dialogError.value = ''
   try {
-    const data = await listVersions(dataset.value, versionSearch.value, next)
+    const data = await listVersions(importDataset.value, versionSearch.value, next)
     if (request !== versionEpoch) return
     versions.value = data.items
     versionPage.value = next
@@ -367,7 +461,11 @@ async function loadVersions(next: number) {
 function openImport() {
   showImport.value = true
   versionSearch.value = ''
-  if (dataset.value) void loadVersions(0)
+  versionId.value = null
+  repairGeometry.value = false
+  dialogError.value = ''
+  if (importDataset.value === dataset.value && dataset.value) void loadVersions(0)
+  else importDataset.value = dataset.value
 }
 async function details(id: number) {
   const request = ++detailEpoch
@@ -388,11 +486,11 @@ async function completed(id: number, count: number) {
   await details(id)
 }
 async function importSelected() {
-  if (!dataset.value || !versionId.value || busy.value || !can('ingestion.run')) return
+  if (!importDataset.value || !versionId.value || busy.value || !can('ingestion.run')) return
   busy.value = true
   dialogError.value = ''
   try {
-    const data = await importLayer(dataset.value, versionId.value)
+    const data = await importLayer(importDataset.value, versionId.value, repairGeometry.value)
     await completed(data.camadaId, data.quantidade)
   } catch (e) {
     dialogError.value = apiError(e)
@@ -413,14 +511,27 @@ async function combine() {
     busy.value = false
   }
 }
+function goToIndicators() {
+  showDetails.value = false
+  emit('useIndicators')
+}
 watch(dataset, () => {
+  combinedIds.value = []
+  void load(0)
+})
+watch(versionId, () => {
+  repairGeometry.value = false
+  dialogError.value = ''
+})
+watch(importDataset, () => {
   versionEpoch++
   versions.value = []
   versionId.value = null
-  combinedIds.value = []
-  success.value = ''
-  void load(0)
-  if (showImport.value && dataset.value) void loadVersions(0)
+  versionSearch.value = ''
+  versionTotal.value = 0
+  versionsLoading.value = false
+  dialogError.value = ''
+  if (showImport.value && importDataset.value) void loadVersions(0)
 })
 watch(showCombine, () => {
   dialogError.value = ''
@@ -612,6 +723,189 @@ ul {
   }
   .page-heading h2 {
     font-size: 22px;
+  }
+}
+
+.workflow-guide {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0 0 16px;
+}
+.workflow-guide > div {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.12);
+  border-radius: 12px;
+  background: rgb(var(--v-theme-surface));
+}
+.workflow-guide strong {
+  font-size: 13px;
+}
+.workflow-guide span {
+  font-size: 12px;
+  line-height: 1.6;
+  color: rgba(var(--v-theme-on-surface), 0.65);
+}
+.completion-action {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 12px 0;
+}
+.detail-actions {
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+.repair-option {
+  margin-top: 20px;
+  padding: 12px 16px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.12);
+  border-radius: 12px;
+}
+.repair-option .note {
+  margin-bottom: 0;
+}
+.repair-diagnostic {
+  font-size: 12px;
+  margin-top: 12px;
+  overflow-wrap: anywhere;
+}
+.repair-diagnostic summary {
+  cursor: pointer;
+}
+.layer-detail-heading {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 28px 28px 20px;
+  margin: 0;
+}
+.layer-detail-icon {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  flex-shrink: 0;
+  border-radius: 14px;
+  background: rgba(var(--v-theme-primary), 0.12);
+  color: rgb(var(--v-theme-primary));
+}
+.detail-eyebrow {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(var(--v-theme-on-surface), 0.6);
+}
+.layer-detail-heading h2 {
+  font-size: 23px;
+  line-height: 1.3;
+  margin: 6px 0 0;
+  overflow-wrap: anywhere;
+}
+.layer-detail-body {
+  padding: 0 28px 20px;
+}
+.layer-facts {
+  display: grid;
+  grid-template-columns: minmax(100px, 1fr) minmax(0, 2fr);
+  gap: 12px;
+}
+.layer-facts > div {
+  display: grid;
+  gap: 8px;
+  padding: 18px;
+  background: rgba(var(--v-theme-on-surface), 0.04);
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border-radius: 12px;
+}
+.layer-facts span {
+  font-size: 12px;
+  color: rgba(var(--v-theme-on-surface), 0.6);
+}
+.layer-facts strong {
+  font-size: 20px;
+  font-weight: 600;
+}
+.detail-explanation {
+  margin: 16px 0 24px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: rgba(var(--v-theme-on-surface), 0.6);
+}
+.layer-context {
+  grid-template-columns: 100px minmax(0, 1fr);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.layer-context dt {
+  color: rgba(var(--v-theme-on-surface), 0.6);
+}
+.layer-context dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.origins-heading {
+  font-size: 14px;
+  margin: 24px 0 12px;
+}
+.origin-card {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 16px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.1);
+  border-radius: 12px;
+  margin-bottom: 8px;
+}
+.origin-card > div {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.origin-card strong {
+  font-size: 13px;
+  font-weight: 500;
+}
+.origin-card span,
+.origin-card small {
+  font-size: 12px;
+  color: rgba(var(--v-theme-on-surface), 0.6);
+}
+.layer-detail-card .detail-actions {
+  padding: 16px 28px 24px;
+}
+@media (max-width: 700px) {
+  .workflow-guide {
+    grid-template-columns: 1fr;
+  }
+  .page-heading {
+    flex-wrap: wrap;
+  }
+  .catalog-search > .v-input {
+    flex-basis: 100%;
+  }
+  .pages {
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+}
+@media (max-width: 600px) {
+  .layer-detail-heading {
+    padding: 20px 16px;
+  }
+  .layer-detail-body {
+    padding: 0 16px 16px;
+  }
+  .layer-detail-card .detail-actions {
+    padding: 16px;
+  }
+  .layer-facts {
+    grid-template-columns: 1fr;
   }
 }
 </style>

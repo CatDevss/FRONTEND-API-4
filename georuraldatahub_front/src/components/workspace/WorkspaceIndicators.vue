@@ -1,8 +1,12 @@
 <template>
-  <section ref="panelElement" class="indicators-panel" aria-label="Indicadores ambientais">
+  <section
+    ref="panelElement"
+    class="indicators-panel environmental-surface"
+    aria-label="Indicadores ambientais"
+  >
     <header>
       <h2>Indicadores ambientais</h2>
-      <p>Escolha a área, informe os dados e consulte o resultado.</p>
+      <p>Calcule um indicador para uma área, consulte o mapa e exporte o relatório.</p>
       <v-btn
         variant="text"
         size="small"
@@ -29,23 +33,27 @@
     <div v-show="view === 'calculate'">
       <nav class="steps" aria-label="Etapas da análise">
         <v-btn :variant="step === 1 ? 'tonal' : 'text'" :disabled="busy" @click="step = 1"
-          >1 · Área</v-btn
+          >1 · Indicador e área</v-btn
         >
         <v-btn
           :variant="step === 2 ? 'tonal' : 'text'"
-          :disabled="!featureId || busy"
+          :disabled="!areaReady || busy"
           @click="step = 2"
           >2 · Dados</v-btn
         >
         <v-btn
           :variant="step === 3 ? 'tonal' : 'text'"
-          :disabled="!result || busy"
+          :disabled="(!result && !batchUsed) || busy"
           @click="step = 3"
           >3 · Resultado</v-btn
         >
       </nav>
-      <div v-show="step === 1" class="form-step">
+      <div v-show="step === 1" class="form-step form-card">
+        <h3>O que você quer analisar?</h3>
+        <p class="note">Escolha o indicador e as áreas que entrarão no relatório.</p>
         <v-select
+          variant="outlined"
+          :menu-props="{ contentClass: 'environmental-menu' }"
           v-model="indicator"
           :items="indicators"
           item-title="name"
@@ -55,30 +63,41 @@
         />
         <EnvironmentalLayerPicker
           v-model="areaLayer"
-          label="Onde está a área que você quer analisar?"
+          label="Camada da área de análise"
           polygon
           :disabled="busy"
           @layers="remember"
         />
+        <p v-if="!areaLayer" class="note">
+          Exemplo: escolha uma camada de municípios e depois busque o município. Se a camada ainda
+          não existe, use “Gerenciar camadas”.
+        </p>
         <template v-if="areaLayer">
-          <details class="advanced">
-            <summary>Ajustar campo do nome</summary>
-            <v-select
-              v-model="field"
-              :items="fields"
-              label="Campo usado como nome"
-              clearable
-              hint="Automático quando vazio. Os campos disponíveis vêm de uma amostra da camada."
-              persistent-hint
-              :disabled="busy"
-            />
-          </details>
+          <v-select
+            :menu-props="{ contentClass: 'environmental-menu' }"
+            v-model="selectionMode"
+            :items="areaModes"
+            label="Áreas do relatório"
+            :disabled="busy"
+            variant="outlined"
+          />
+          <p v-if="selectionMode === 'all'" class="note">
+            Todas as {{ areaTotal }} áreas poligonais desta camada serão analisadas,
+            independentemente da busca. Cada uma terá seu próprio resultado.
+          </p>
           <v-autocomplete
-            v-model="featureId"
+            variant="outlined"
+            :menu-props="{ contentClass: 'environmental-menu' }"
+            v-if="selectionMode !== 'all'"
+            :model-value="selectionMode === 'multiple' ? featureIds : featureId"
+            :multiple="selectionMode === 'multiple'"
+            :chips="selectionMode === 'multiple'"
+            :closable-chips="selectionMode === 'multiple'"
+            @update:model-value="selectAreas"
             :items="featureOptions"
             item-title="name"
             item-value="id"
-            label="Buscar município, imóvel ou bioma"
+            label="Buscar área pelo nome"
             no-filter
             clearable
             :loading="searching"
@@ -107,14 +126,15 @@
           </v-autocomplete>
         </template>
         <v-alert v-if="error" type="error" class="mb-4">{{ error }}</v-alert>
-        <v-btn color="primary" :disabled="!featureId || searching" @click="step = 2"
+        <v-btn color="primary" :disabled="!areaReady || searching" @click="step = 2"
           >Continuar</v-btn
         >
       </div>
-      <div v-show="step === 2" class="form-step">
+      <div v-show="step === 2" class="form-step form-card">
+        <h3>Quais dados entram no cálculo?</h3>
         <p class="note">
           <strong>{{ selected.name }}</strong> ·
-          {{ featureOptions.find((f) => f.id === featureId)?.name }}
+          {{ selectionSummary }}
         </p>
         <p class="note">
           Selecione camadas cujo conteúdo corresponda a cada papel. O nome do arquivo não determina
@@ -132,44 +152,131 @@
         />
         <template v-if="indicator === 'irl'"
           ><v-text-field
+            variant="outlined"
             v-model.number="minimum"
             type="number"
             min="0"
             max="100"
             label="Percentual mínimo de reserva legal (%)"
             :disabled="busy" /><v-textarea
+            variant="outlined"
             v-model="reason"
             label="Fundamento do percentual adotado"
             rows="2"
             :disabled="busy"
         /></template>
+        <template v-if="indicator === 'ifc'">
+          <v-select
+            :menu-props="{ contentClass: 'environmental-menu' }"
+            v-model="ifcPeriod"
+            :items="[
+              { title: 'Um dia', value: 'day' },
+              { title: 'Período', value: 'range' },
+            ]"
+            label="Intervalo dos focos de calor"
+            :disabled="busy"
+            variant="outlined"
+          />
+          <v-text-field
+            v-if="ifcPeriod === 'day'"
+            v-model="day"
+            type="date"
+            label="Data do boletim"
+            :disabled="busy"
+            variant="outlined"
+          />
+          <template v-else
+            ><v-text-field
+              v-model="start"
+              type="date"
+              label="Data inicial"
+              :disabled="busy"
+              variant="outlined" /><v-text-field
+              v-model="end"
+              type="date"
+              label="Data final (inclusiva)"
+              :disabled="busy"
+              variant="outlined"
+          /></template>
+          <p class="note">
+            Use um dia para um boletim diário. Escolha um período ao analisar camadas de vários
+            dias. A data deve corresponder ao conteúdo selecionado.
+          </p>
+        </template>
         <v-text-field
-          v-if="indicator === 'ifc'"
-          v-model="start"
-          type="date"
-          label="Data inicial"
-          :disabled="busy"
-        />
-        <v-text-field
-          v-if="indicator === 'ifc' || indicator === 'idesmat'"
+          v-if="indicator === 'idesmat'"
           v-model="end"
           type="date"
           label="Data final (inclusiva)"
           :disabled="busy"
+          variant="outlined"
         />
         <v-alert v-if="error" type="error" class="mb-4">{{ error }}</v-alert>
+        <div class="calculation-summary">
+          <strong>Confira antes de calcular</strong>
+          <dl>
+            <dt>Indicador</dt>
+            <dd>{{ selected.name }}</dd>
+            <dt>Área</dt>
+            <dd>{{ selectionSummary }}</dd>
+            <template v-for="role in selected.roles" :key="role"
+              ><dt>{{ roleNames[role] ?? role }}</dt>
+              <dd>{{ inputNames(role) }}</dd></template
+            >
+            <template v-if="indicator === 'ifc' && ifcPeriod === 'day'"
+              ><dt>Dia</dt>
+              <dd>{{ day || 'Informe a data' }}</dd></template
+            >
+            <template v-if="indicator === 'ifc' && ifcPeriod === 'range'"
+              ><dt>Período</dt>
+              <dd>{{ start || 'Informe o início' }} a {{ end || 'informe o fim' }}</dd></template
+            >
+            <template v-if="indicator === 'idesmat'"
+              ><dt>Fim</dt>
+              <dd>{{ end || 'Informe a data' }}</dd></template
+            >
+          </dl>
+        </div>
+        <p v-if="selectionMode !== 'single'" class="note">
+          Serão feitos {{ selectedCount }} cálculos independentes. Ao salvar, cada resultado ficará
+          no histórico. Se houver falha, as outras áreas continuarão e o relatório identificará o
+          problema.
+        </p>
         <div class="calculation-actions">
+          <v-btn variant="text" :disabled="busy" prepend-icon="mdi-arrow-left" @click="step = 1"
+            >Voltar à área</v-btn
+          >
           <v-btn color="primary" :loading="busy" :disabled="!valid || searching" @click="run(true)"
             >Calcular e salvar</v-btn
           >
-          <v-btn variant="text" :disabled="!valid || searching || busy" @click="run(false)"
-            >Prévia sem salvar</v-btn
-          >
         </div>
         <p class="note mt-3">
-          Salvar registra este indicador, os parâmetros e o resultado no histórico.
+          O cálculo salvo poderá ser reaberto no Histórico. No resultado, escolha CSV, Excel ou PDF
+          / imprimir.
         </p>
+        <details class="advanced preview-options">
+          <summary>Calcular sem registrar no histórico</summary>
+          <p class="note">
+            Use uma prévia apenas para conferir os dados. Ela também permite exportar, mas não fica
+            no histórico.
+          </p>
+          <v-btn variant="tonal" :disabled="!valid || searching || busy" @click="run(false)"
+            >Prévia sem salvar</v-btn
+          >
+        </details>
       </div>
+      <EnvironmentalBatchResults
+        v-if="batchUsed"
+        v-show="step === 3"
+        :areas="batchAreas"
+        :entries="batchEntries"
+        :indicator="indicator"
+        :parameters="batchParameters"
+        :busy="busy"
+        :stopping="stopping"
+        @stop="stopping = true"
+        @new="newCalculation"
+      />
       <section v-if="result" v-show="step === 3" class="results" aria-live="polite">
         <div class="result-navigation">
           <v-btn variant="text" prepend-icon="mdi-arrow-left" @click="step = 2"
@@ -216,8 +323,15 @@
   </section>
 </template>
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import EnvironmentalHistory from './EnvironmentalHistory.vue'
+import EnvironmentalBatchResults from './EnvironmentalBatchResults.vue'
+import {
+  allAnalysisAreas,
+  calculateAreas,
+  type AnalysisArea,
+  type AreaCalculation,
+} from '@/services/environmentalBatch'
 import EnvironmentalResultActions from './EnvironmentalResultActions.vue'
 import type { CalculationSnapshot } from '@/services/environmentalReport'
 import EnvironmentalLayerPicker from './EnvironmentalLayerPicker.vue'
@@ -245,10 +359,23 @@ watch([step, view], async () => {
 const indicator = ref('icv'),
   areaLayer = ref<number | null>(null),
   featureId = ref<number | null>(null)
+const selectionMode = ref<'single' | 'multiple' | 'all'>('single')
+const featureIds = ref<number[]>([]),
+  areaTotal = ref(0)
+const ifcPeriod = ref('day'),
+  day = ref('')
+const areaModes = [
+  { title: 'Uma área', value: 'single' },
+  { title: 'Selecionar várias áreas', value: 'multiple' },
+  { title: 'Todas as áreas da camada', value: 'all' },
+]
+const batchUsed = ref(false),
+  stopping = ref(false)
+const batchAreas = ref<AnalysisArea[]>([]),
+  batchEntries = ref<AreaCalculation[]>([])
+const batchParameters = ref<Record<string, unknown>>({})
 const inputs = ref<Record<string, number[]>>({}),
-  query = ref(''),
-  field = ref<string | null>(null),
-  fields = ref<string[]>([])
+  query = ref('')
 const features = ref<Feature[]>([]),
   featurePage = ref(0),
   featureTotal = ref(0),
@@ -264,10 +391,33 @@ const minimum = ref<number | string>(''),
 const featureCache = new Map<number, Feature>()
 const featureOptions = computed(() => {
   const rows = new Map(features.value.map((f) => [f.id, f]))
-  const selected = featureId.value ? featureCache.get(featureId.value) : null
-  if (selected) rows.set(selected.id, selected)
+  for (const id of [featureId.value, ...featureIds.value]) {
+    const area = id ? featureCache.get(id) : null
+    if (area) rows.set(area.id, area)
+  }
   return [...rows.values()]
 })
+const selectedCount = computed(() =>
+  selectionMode.value === 'all'
+    ? areaTotal.value
+    : selectionMode.value === 'multiple'
+      ? featureIds.value.length
+      : featureId.value
+        ? 1
+        : 0,
+)
+const areaReady = computed(() => !!areaLayer.value && selectedCount.value > 0)
+const selectionSummary = computed(() =>
+  selectionMode.value === 'all'
+    ? `Todas as ${areaTotal.value} áreas da camada`
+    : selectionMode.value === 'multiple'
+      ? `${featureIds.value.length} áreas selecionadas`
+      : (featureCache.get(featureId.value ?? 0)?.name ?? 'Selecione uma área'),
+)
+function selectAreas(value: number | number[] | null) {
+  if (selectionMode.value === 'multiple') featureIds.value = Array.isArray(value) ? value : []
+  else featureId.value = typeof value === 'number' ? value : null
+}
 let searchTimer: ReturnType<typeof setTimeout> | undefined
 function featureSearchChanged(value: string) {
   if (busy.value || featureOptions.value.some((f) => f.name === value)) return
@@ -286,8 +436,15 @@ function newCalculation() {
   featureTotal.value = 0
   featurePage.value = 0
   query.value = ''
-  field.value = null
-  fields.value = []
+  featureIds.value = []
+  areaTotal.value = 0
+  selectionMode.value = 'single'
+  ifcPeriod.value = 'day'
+  day.value = ''
+  batchUsed.value = false
+  batchAreas.value = []
+  batchEntries.value = []
+  stopping.value = false
   inputs.value = {}
   minimum.value = ''
   reason.value = ''
@@ -300,9 +457,15 @@ function newCalculation() {
   searching.value = false
   step.value = 1
 }
-const layers = new Map<number, Layer>()
+const layers = reactive(new Map<number, Layer>())
 function remember(items: Layer[]) {
   for (const item of items) layers.set(item.id, item)
+}
+function inputNames(role: string) {
+  const ids = inputs.value[role] ?? []
+  return ids.length
+    ? ids.map((id) => layers.get(id)?.name ?? 'Camada selecionada').join(', ')
+    : 'Selecione ao menos uma camada'
 }
 const selected = computed(() => indicators.find((i) => i.id === indicator.value) ?? indicators[0])
 const iso = (value: string) =>
@@ -311,15 +474,18 @@ const iso = (value: string) =>
   new Date(value).toISOString().slice(0, 10) === value
 const valid = computed(
   () =>
-    !!featureId.value &&
+    areaReady.value &&
     selected.value.roles.every((r) => (inputs.value[r]?.length ?? 0) > 0) &&
     (indicator.value !== 'irl' ||
       (minimum.value !== '' &&
         Number(minimum.value) >= 0 &&
         Number(minimum.value) <= 100 &&
         !!reason.value.trim())) &&
-    (!['ifc', 'idesmat'].includes(indicator.value) || iso(end.value)) &&
-    (indicator.value !== 'ifc' || (iso(start.value) && start.value <= end.value)),
+    (indicator.value !== 'idesmat' || iso(end.value)) &&
+    (indicator.value !== 'ifc' ||
+      (ifcPeriod.value === 'day'
+        ? iso(day.value)
+        : iso(start.value) && iso(end.value) && start.value <= end.value)),
 )
 let epoch = 0
 async function searchFeatures(page: number) {
@@ -328,24 +494,13 @@ async function searchFeatures(page: number) {
   searching.value = true
   error.value = ''
   try {
-    const data = await listFeatures(areaLayer.value, query.value, field.value ?? '', page)
+    const data = await listFeatures(areaLayer.value, query.value, '', page)
     if (request !== epoch) return
     features.value = data.items
     for (const f of data.items) featureCache.set(f.id, f)
     featurePage.value = page
     featureTotal.value = data.total
-    const keys = new Set(fields.value)
-    for (const f of data.items) {
-      try {
-        const attrs = JSON.parse(f.attributes ?? '{}')
-        for (const [k, v] of Object.entries(attrs))
-          if (/^[\p{L}\p{N}_]{1,100}$/u.test(k) && ['string', 'number'].includes(typeof v))
-            keys.add(k)
-      } catch {
-        /* Os atributos podem estar ausentes. */
-      }
-    }
-    fields.value = [...keys].sort()
+    if (!query.value) areaTotal.value = data.total
   } catch (e) {
     if (request === epoch) {
       features.value = []
@@ -363,31 +518,50 @@ watch(areaLayer, () => {
   searching.value = false
   featureId.value = null
   features.value = []
-  fields.value = []
+  featureIds.value = []
+  areaTotal.value = 0
   query.value = ''
-  field.value = null
   result.value = null
   void searchFeatures(0)
 })
-watch(field, () => {
-  void searchFeatures(0)
+watch(selectionMode, (mode) => {
+  if (mode === 'all') {
+    clearTimeout(searchTimer)
+    query.value = ''
+    void searchFeatures(0)
+  }
 })
 watch(
-  [indicator, featureId, inputs, minimum, reason, start, end],
+  [
+    indicator,
+    featureId,
+    featureIds,
+    selectionMode,
+    inputs,
+    minimum,
+    reason,
+    start,
+    end,
+    ifcPeriod,
+    day,
+  ],
   () => {
     result.value = null
     snapshot.value = null
+    batchUsed.value = false
+    batchEntries.value = []
     if (step.value === 3) step.value = 2
     error.value = ''
   },
   { deep: true },
 )
 onBeforeUnmount(() => {
+  stopping.value = true
   epoch++
   clearTimeout(searchTimer)
 })
 async function run(save = false) {
-  if (!valid.value || !featureId.value || busy.value) return
+  if (!valid.value || busy.value) return
   busy.value = true
   error.value = ''
   result.value = null
@@ -397,12 +571,47 @@ async function run(save = false) {
     params.rlMinimoPercentual = Number(minimum.value)
     params.fundamentoRl = reason.value.trim()
   }
-  if (['ifc', 'idesmat'].includes(indicator.value)) params.fim = end.value
-  if (indicator.value === 'ifc') params.inicio = start.value
-  featureName.value = featureCache.get(featureId.value)?.name ?? 'Área selecionada'
+  if (indicator.value === 'idesmat') params.fim = end.value
+  if (indicator.value === 'ifc') {
+    params.inicio = ifcPeriod.value === 'day' ? day.value : start.value
+    params.fim = ifcPeriod.value === 'day' ? day.value : end.value
+  }
+  featureName.value = featureCache.get(featureId.value ?? 0)?.name ?? 'Área selecionada'
   try {
+    if (selectionMode.value !== 'single') {
+      batchUsed.value = true
+      batchAreas.value = []
+      batchEntries.value = []
+      batchParameters.value = JSON.parse(JSON.stringify(params))
+      stopping.value = false
+      step.value = 3
+      batchAreas.value =
+        selectionMode.value === 'all'
+          ? await allAnalysisAreas(areaLayer.value!, () => stopping.value)
+          : featureIds.value.map((id) => ({
+              id,
+              name: featureCache.get(id)?.name ?? 'Área selecionada',
+            }))
+      if (!batchAreas.value.length && !stopping.value)
+        throw new Error('Nenhuma área disponível para calcular.')
+      if (stopping.value && !batchAreas.value.length) {
+        batchUsed.value = false
+        step.value = 2
+        error.value = 'Processamento interrompido antes do primeiro cálculo.'
+        return
+      }
+      await calculateAreas(
+        batchAreas.value,
+        indicator.value,
+        batchParameters.value,
+        save,
+        () => stopping.value,
+        (entry) => batchEntries.value.push(entry),
+      )
+      return
+    }
     const data = await (save ? calculateAndSave : calculate)(
-      featureId.value,
+      featureId.value!,
       indicator.value,
       params,
     )
@@ -418,9 +627,13 @@ async function run(save = false) {
     )
     step.value = 3
   } catch (e) {
+    batchUsed.value = false
+    step.value = 2
     error.value = apiError(
       e,
-      'Não foi possível calcular. Confira as camadas e a disponibilidade do serviço ambiental.',
+      e instanceof Error
+        ? e.message
+        : 'Não foi possível calcular. Confira as camadas e a disponibilidade do serviço ambiental.',
     )
   } finally {
     busy.value = false
@@ -488,22 +701,6 @@ const sources = computed(() => {
 })
 </script>
 <style scoped>
-.steps {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 24px;
-}
-.advanced {
-  margin-bottom: 16px;
-  font-size: 12px;
-}
-.advanced summary,
-summary {
-  cursor: pointer;
-  margin-bottom: 12px;
-  color: rgb(var(--v-theme-primary));
-}
 .indicators-panel {
   width: 100%;
   max-width: 860px;
@@ -512,17 +709,12 @@ summary {
   pointer-events: auto;
   padding: 24px;
   border-radius: 18px;
-  background: rgba(var(--v-theme-surface), 0.97);
+  background: rgb(var(--v-theme-surface));
   border: 1px solid rgba(var(--v-theme-on-surface), 0.1);
   box-shadow: 0 8px 28px #0003;
 }
-.eyebrow {
-  font-size: 10px;
-  letter-spacing: 0.14em;
-  color: rgb(var(--v-theme-primary));
-}
 header {
-  margin-bottom: 24px;
+  margin-bottom: 20px;
 }
 header h2 {
   font-size: 24px;
@@ -537,26 +729,51 @@ header p,
 .note {
   margin-bottom: 16px;
 }
-.search-row,
+.steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.1);
+  padding-bottom: 16px;
+  margin-bottom: 28px;
+}
+.advanced {
+  margin: 16px 0;
+  font-size: 12px;
+}
+summary {
+  cursor: pointer;
+  margin-bottom: 12px;
+  color: rgb(var(--v-theme-primary));
+}
+.form-step {
+  max-width: 760px;
+}
+.form-card {
+  padding: 24px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.12);
+  border-radius: 14px;
+  background: rgb(var(--v-theme-surface));
+}
+.form-card h3 {
+  font-size: 18px;
+  margin-bottom: 8px;
+}
+.form-card > :deep(.v-input) {
+  margin-bottom: 16px;
+}
+.indicators-panel :deep(.v-field) {
+  font-size: 14px;
+}
+.indicators-panel :deep(.v-input) {
+  --v-input-control-height: 52px;
+}
 .pages {
   display: flex;
   align-items: center;
-  gap: 10px;
-}
-.pages {
   justify-content: space-between;
+  gap: 10px;
   font-size: 11px;
-}
-.results {
-  margin-top: 24px;
-  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.15);
-  padding-top: 20px;
-}
-.metric-card {
-  margin: 14px 0;
-  padding: 16px;
-  border-radius: 12px;
-  background: rgba(var(--v-theme-primary), 0.06);
 }
 dl {
   display: grid;
@@ -573,47 +790,46 @@ ul {
   font-size: 12px;
   line-height: 1.8;
 }
-@media (max-width: 600px) {
-  .indicators-panel {
-    padding: 16px;
-  }
-  .search-row {
-    flex-wrap: wrap;
-  }
+.calculation-summary {
+  margin: 24px 0;
+  padding: 16px;
+  border-radius: 10px;
+  background: rgba(var(--v-theme-on-surface), 0.04);
+  font-size: 13px;
 }
-.form-step {
-  max-width: 760px;
+.calculation-summary dl {
+  grid-template-columns: minmax(90px, 1fr) minmax(0, 2fr);
 }
-.steps {
-  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.1);
-  padding-bottom: 16px;
-  margin-bottom: 28px;
-}
-header h2 {
-  font-size: 24px;
-}
-header {
-  margin-bottom: 20px;
-}
-.results {
-  max-width: 900px;
-}
-.indicators-panel :deep(.v-field) {
-  font-size: 14px;
-}
-.indicators-panel :deep(.v-input) {
-  --v-input-control-height: 52px;
-}
-.metric-card {
-  max-width: 760px;
-}
-.advanced {
-  margin: 16px 0;
+.calculation-summary dd {
+  font-weight: 400;
+  overflow-wrap: anywhere;
 }
 .calculation-actions {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
+}
+.view-switch,
+.result-navigation {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 16px 0 24px;
+}
+.result-navigation {
+  justify-content: space-between;
+}
+.results {
+  margin-top: 24px;
+  max-width: 900px;
+}
+.metric-card {
+  max-width: 760px;
+  padding: 20px;
+  margin: 20px 0;
+  border-radius: 12px;
+  background: rgba(var(--v-theme-primary), 0.06);
 }
 .result-heading {
   display: flex;
@@ -649,14 +865,6 @@ header {
   font-weight: 400;
   color: rgba(var(--v-theme-on-surface), 0.7);
 }
-.results {
-  border-top: 0;
-  padding-top: 0;
-}
-.metric-card {
-  padding: 20px;
-  margin: 20px 0;
-}
 .results > p {
   font-size: 13px;
 }
@@ -669,19 +877,26 @@ header {
   display: flex;
   justify-content: flex-end;
   align-items: baseline;
-  white-space: nowrap;
+  flex-wrap: wrap;
 }
 .results dl {
   gap: 16px;
 }
-.view-switch,
-.result-navigation {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 16px 0 24px;
-}
-.result-navigation {
-  justify-content: space-between;
+@media (max-width: 600px) {
+  .indicators-panel,
+  .form-card {
+    padding: 16px;
+  }
+  .calculation-summary dl {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+  .calculation-summary dd {
+    margin-bottom: 12px;
+  }
+  .calculation-actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
 }
 </style>

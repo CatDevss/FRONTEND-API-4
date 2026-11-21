@@ -194,6 +194,7 @@
           <WorkspaceLayers
             v-if="workspace.activeTab === 'layers'"
             :initial-dataset="workspace.selectedDatasetId"
+            @use-indicators="workspace.activeTab = 'meters'"
           />
           <WorkspaceIndicators
             v-if="workspace.activeTab === 'meters'"

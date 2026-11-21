@@ -1,5 +1,7 @@
 <template>
   <v-autocomplete
+    variant="outlined"
+    :menu-props="{ contentClass: 'environmental-menu' }"
     :model-value="modelValue"
     :items="options"
     item-title="label"

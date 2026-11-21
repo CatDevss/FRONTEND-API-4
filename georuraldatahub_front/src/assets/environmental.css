@@ -1,0 +1,50 @@
+.environmental-surface {
+  min-width: 0;
+}
+.environmental-surface .v-input {
+  min-width: 0;
+}
+.environmental-surface .v-field {
+  background: rgb(var(--v-theme-surface));
+  border-radius: 10px !important;
+}
+.environmental-surface .v-field__input {
+  min-width: 0;
+}
+.environmental-surface .v-select__selection,
+.environmental-surface .v-autocomplete__selection {
+  max-width: 100%;
+}
+.environmental-surface .v-select__selection-text,
+.environmental-surface .v-autocomplete__selection-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.environmental-surface .v-card-title {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.environmental-menu > .v-list {
+  background: rgb(var(--v-theme-surface)) !important;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.16) !important;
+}
+.environmental-menu .v-list-item-title,
+.environmental-menu .v-list-item-subtitle,
+.environmental-surface .v-list-item-title,
+.environmental-surface .v-list-item-subtitle {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.environmental-surface .v-chip {
+  max-width: 100%;
+}
+.environmental-surface .v-chip__content {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.v-overlay__content > .v-card.environmental-surface {
+  background: rgb(var(--v-theme-surface)) !important;
+}

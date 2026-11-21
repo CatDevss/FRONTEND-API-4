@@ -3,6 +3,7 @@ import axios from 'axios'
 import {
   calculate,
   calculateAndSave,
+  importLayer,
   listFeatures,
   listLayers,
   formatValue,
@@ -10,6 +11,18 @@ import {
 vi.mock('axios', () => ({ default: { get: vi.fn(), post: vi.fn() } }))
 beforeEach(() => vi.clearAllMocks())
 describe('contratos ambientais', () => {
+  it('solicita reparo apenas quando o usuário permite', async () => {
+    vi.mocked(axios.post).mockResolvedValue({ data: { camadaId: 1, quantidade: 3 } })
+    await importLayer(2, 9)
+    expect(axios.post).toHaveBeenLastCalledWith('/conjuntos/2/versoes/9/camada-oracle', undefined, {
+      timeout: 310000,
+    })
+    await importLayer(2, 9, true)
+    expect(axios.post).toHaveBeenLastCalledWith('/conjuntos/2/versoes/9/camada-oracle', undefined, {
+      timeout: 310000,
+      params: { corrigirGeometria: true },
+    })
+  })
   it('busca IDs reais e pagina feições no servidor', async () => {
     vi.mocked(axios.get).mockResolvedValue({ data: { items: [], total: 0, page: 2, size: 20 } })
     await listLayers('municípios', 2)
@@ -78,6 +91,11 @@ function mountPanel() {
         VBtn: Button,
         VAlert: { template: '<div><slot /></div>' },
         VDivider: true,
+        VProgressLinear: true,
+        VDialog: { props: ['modelValue'], template: '<div v-if="modelValue"><slot /></div>' },
+        VCard: { template: '<div><slot /></div>' },
+        VCardText: { template: '<div><slot /></div>' },
+        VCardActions: { template: '<div><slot /></div>' },
       },
     },
   })
@@ -93,7 +111,15 @@ describe('formulário ambiental', () => {
     select.vm.$emit('update:modelValue', 'ifc')
     await flushPromises()
     expect(panel.text()).toContain('Focos de calor')
+    expect(panel.text()).toContain('Data do boletim')
+    expect(panel.text()).not.toContain('Data final (inclusiva)')
+    panel
+      .findAllComponents({ name: 'TestInput' })
+      .find((c) => c.props('label') === 'Intervalo dos focos de calor')!
+      .vm.$emit('update:modelValue', 'range')
+    await flushPromises()
     expect(panel.text()).toContain('Data inicial')
+    expect(panel.text()).toContain('Data final (inclusiva)')
     expect(panel.text()).not.toContain('Fundamento do percentual adotado')
     select.vm.$emit('update:modelValue', 'irl')
     await flushPromises()
@@ -124,7 +150,7 @@ describe('formulário ambiental', () => {
     await flushPromises()
     panel
       .findAllComponents({ name: 'TestInput' })
-      .find((c) => c.props('label') === 'Buscar município, imóvel ou bioma')!
+      .find((c) => c.props('label') === 'Buscar área pelo nome')!
       .vm.$emit('update:modelValue', 928)
     panel.findAllComponents({ name: 'TestPicker' })[1]!.vm.$emit('update:modelValue', [28, 35])
     await flushPromises()
@@ -139,6 +165,7 @@ describe('formulário ambiental', () => {
       { timeout: 310000 },
     )
     expect(panel.text()).toContain('Curitiba')
+    expect(panel.text()).toContain('Confira antes de calcular')
     expect(panel.text()).toContain('Não disponível')
     expect(panel.text()).toContain('0')
     expect(panel.text()).toContain('ha')
@@ -176,6 +203,135 @@ describe('formulário ambiental', () => {
     ).toHaveProperty('disabled')
     expect(panel.text()).not.toContain('Salvo no histórico · #17')
 
+    panel.unmount()
+  })
+  it('envia a mesma data como início e fim no boletim diário de focos', async () => {
+    vi.mocked(axios.get).mockResolvedValue({
+      data: {
+        items: [{ id: 7, name: 'Apucarana', attributes: null }],
+        total: 1,
+        page: 0,
+        size: 20,
+      },
+    })
+    vi.mocked(axios.post).mockResolvedValue({ data: { IFC: { quantidade: 0 }, calculoId: 12 } })
+    const panel = mountPanel()
+    const input = (label: string) =>
+      panel.findAllComponents({ name: 'TestInput' }).find((c) => c.props('label') === label)!
+    input('Indicador').vm.$emit('update:modelValue', 'ifc')
+    panel.findComponent({ name: 'TestPicker' }).vm.$emit('update:modelValue', 19)
+    await flushPromises()
+    input('Buscar área pelo nome').vm.$emit('update:modelValue', 7)
+    panel.findAllComponents({ name: 'TestPicker' })[1]!.vm.$emit('update:modelValue', [43])
+    input('Data do boletim').vm.$emit('update:modelValue', '2026-10-20')
+    await flushPromises()
+    await panel
+      .findAll('button')
+      .find((b) => b.text() === 'Calcular e salvar')!
+      .trigger('click')
+    await flushPromises()
+    expect(axios.post).toHaveBeenCalledWith(
+      '/imoveis/7/indicadores/ifc/calcular',
+      { focos: [43], inicio: '2026-10-20', fim: '2026-10-20' },
+      { timeout: 310000 },
+    )
+    expect(panel.text()).not.toContain('Ajustar campo do nome')
+    panel.unmount()
+  })
+  it('calcula as áreas selecionadas separadamente e preserva os nomes no relatório', async () => {
+    vi.mocked(axios.get).mockResolvedValue({
+      data: {
+        items: [
+          { id: 7, name: 'Apucarana', attributes: null },
+          { id: 8, name: 'Vera Tupã’i', attributes: null },
+        ],
+        total: 2,
+        page: 0,
+        size: 20,
+      },
+    })
+    vi.mocked(axios.post).mockResolvedValue({ data: { ICV: { percentual: 10 }, calculoId: 12 } })
+    const panel = mountPanel()
+    panel.findComponent({ name: 'TestPicker' }).vm.$emit('update:modelValue', 19)
+    await flushPromises()
+    panel
+      .findAllComponents({ name: 'TestInput' })
+      .find((c) => c.props('label') === 'Áreas do relatório')!
+      .vm.$emit('update:modelValue', 'multiple')
+    await flushPromises()
+    panel
+      .findAllComponents({ name: 'TestInput' })
+      .find((c) => c.props('label') === 'Buscar área pelo nome')!
+      .vm.$emit('update:modelValue', [7, 8])
+    panel.findAllComponents({ name: 'TestPicker' })[1]!.vm.$emit('update:modelValue', [43])
+    await flushPromises()
+    await panel
+      .findAll('button')
+      .find((b) => b.text() === 'Calcular e salvar')!
+      .trigger('click')
+    await flushPromises()
+    expect(axios.post).toHaveBeenCalledWith(
+      '/imoveis/7/indicadores/icv/calcular',
+      { vegetacao: [43] },
+      { timeout: 310000 },
+    )
+    expect(axios.post).toHaveBeenCalledWith(
+      '/imoveis/8/indicadores/icv/calcular',
+      { vegetacao: [43] },
+      { timeout: 310000 },
+    )
+    expect(panel.text()).toContain('Relatório por área')
+    expect(panel.text()).toContain('Apucarana')
+    expect(panel.text()).toContain('Vera Tupã’i')
+    panel.unmount()
+  })
+  it('inclui todas as áreas poligonais ao escolher a camada inteira', async () => {
+    vi.mocked(axios.get).mockResolvedValue({
+      data: {
+        items: [
+          { id: 7, name: 'Apucarana', attributes: null },
+          { id: 8, name: 'Vera Tupã’i', attributes: null },
+        ],
+        total: 2,
+        page: 0,
+        size: 20,
+      },
+    })
+    vi.mocked(axios.post).mockResolvedValue({ data: { ICV: { percentual: 10 } } })
+    const panel = mountPanel()
+    panel.findComponent({ name: 'TestPicker' }).vm.$emit('update:modelValue', 19)
+    await flushPromises()
+    panel
+      .findAllComponents({ name: 'TestInput' })
+      .find((c) => c.props('label') === 'Áreas do relatório')!
+      .vm.$emit('update:modelValue', 'all')
+    await flushPromises()
+    expect(
+      panel
+        .findAllComponents({ name: 'TestInput' })
+        .some((c) => c.props('label') === 'Buscar área pelo nome'),
+    ).toBe(false)
+    panel.findAllComponents({ name: 'TestPicker' })[1]!.vm.$emit('update:modelValue', [43])
+    await flushPromises()
+    await panel
+      .findAll('button')
+      .find((b) => b.text() === 'Prévia sem salvar')!
+      .trigger('click')
+    await flushPromises()
+    expect(axios.get).toHaveBeenCalledWith('/ambiental/camadas/19/feicoes', {
+      params: { busca: '', campo: undefined, page: 0, size: 100 },
+    })
+    expect(axios.post).toHaveBeenCalledTimes(2)
+    expect(axios.post).toHaveBeenCalledWith(
+      '/imoveis/7/indicadores/icv',
+      { vegetacao: [43] },
+      { timeout: 310000 },
+    )
+    expect(axios.post).toHaveBeenCalledWith(
+      '/imoveis/8/indicadores/icv',
+      { vegetacao: [43] },
+      { timeout: 310000 },
+    )
     panel.unmount()
   })
 })
