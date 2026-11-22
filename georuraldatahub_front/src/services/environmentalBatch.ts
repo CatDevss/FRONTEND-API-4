@@ -1,8 +1,10 @@
 import axios from 'axios'
+import { calculateReportArea, recordReportFailure } from './environmentalReports'
 import { calculate, calculateAndSave, listFeatures } from './environmentalIndicators'
 import { apiError } from './contracts'
 import type { CalculationSnapshot } from './environmentalReport'
 export interface AnalysisArea {
+  featureId?: number
   id: number
   name: string
 }
@@ -39,13 +41,18 @@ export async function calculateAreas(
   save: boolean,
   stopped: () => boolean,
   completed: (entry: AreaCalculation) => void,
+  reportId?: string,
 ) {
   const params = JSON.parse(JSON.stringify(parameters)) as Record<string, unknown>
   // Cada chamada salva uma área. Interromper não desfaz os cálculos já concluídos.
   for (const area of areas) {
+    let stoppedRecording = false
     if (stopped()) break
     try {
-      const result = await (save ? calculateAndSave : calculate)(area.id, indicator, params)
+      const result =
+        reportId && save
+          ? await calculateReportArea(reportId, area.id)
+          : await (save ? calculateAndSave : calculate)(area.id, indicator, params)
       completed({
         area,
         snapshot: {
@@ -58,13 +65,20 @@ export async function calculateAreas(
       })
     } catch (error) {
       const noResponse = axios.isAxiosError(error) && !error.response
-      completed({
-        area,
-        unconfirmed: noResponse,
-        error: noResponse
-          ? `Sem confirmação do servidor.${save ? ' Consulte o histórico antes de tentar novamente.' : ''}`
-          : apiError(error, 'Não foi possível calcular esta área.'),
-      })
+      let message = noResponse
+        ? `Sem confirmação do servidor.${save ? ' Consulte o histórico antes de tentar novamente.' : ''}`
+        : apiError(error, 'Não foi possível calcular esta área.')
+      if (reportId && !noResponse) {
+        try {
+          await recordReportFailure(reportId, area.id, message)
+        } catch {
+          stoppedRecording = true
+          message +=
+            ' Não foi possível registrar a falha no relatório. Consulte o histórico antes de tentar novamente.'
+        }
+      }
+      completed({ area, unconfirmed: noResponse || stoppedRecording, error: message })
+      if (stoppedRecording) break
       if (
         noResponse ||
         (axios.isAxiosError(error) && [401, 403].includes(error.response?.status ?? 0))

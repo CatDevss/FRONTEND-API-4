@@ -1,4 +1,6 @@
+import { apiError } from './contracts'
 import axios from 'axios'
+import type { HistoryFilters } from './environmentalHistoryFilters'
 export interface Layer {
   id: number
   name: string
@@ -164,13 +166,54 @@ export interface HistoryDetail {
   parameters: Record<string, unknown>
   result: Record<string, unknown>
 }
-export async function listHistory(busca: string, indicador: string, page = 0) {
+export async function listHistory(
+  busca: string,
+  indicador: string,
+  page = 0,
+  signal?: AbortSignal,
+  filters: HistoryFilters = {},
+) {
   return (
     await axios.get<Page<HistoryEntry>>('/ambiental/calculos', {
-      params: { busca, indicador, page, size: 20 },
+      params: { busca, indicador, page, size: 20, ...filters },
+      timeout: 30000,
+      ...(signal ? { signal } : {}),
     })
   ).data
 }
-export async function getHistory(id: number) {
-  return (await axios.get<HistoryDetail>(`/ambiental/calculos/${id}`)).data
+export async function getHistory(id: number, signal?: AbortSignal) {
+  return signal
+    ? (await axios.get<HistoryDetail>(`/ambiental/calculos/${id}`, { signal, timeout: 30000 })).data
+    : (await axios.get<HistoryDetail>(`/ambiental/calculos/${id}`)).data
+}
+
+export interface LayerDay {
+  date: string
+  records: number
+}
+export interface LayerData {
+  layerId: number
+  records: number
+  undatedRecords: number
+  repairedFeatures: number
+  days: LayerDay[]
+  repairs: { featureId: number; name: string; record: string }[]
+}
+export async function layerData(id: number): Promise<LayerData> {
+  const { data } = await axios.get<LayerData>(`/ambiental/camadas/${id}/dados`)
+  if (!Array.isArray(data.days)) throw new Error('Metadados de datas indisponíveis.')
+  return data
+}
+
+export function historySearchError(error: unknown): string {
+  const failure =
+    error && typeof error === 'object'
+      ? (error as { code?: string; response?: { status?: number } })
+      : {}
+  if (failure.code === 'ECONNABORTED' || failure.code === 'ETIMEDOUT')
+    return 'A busca demorou mais que o esperado. O backend não respondeu em 30 segundos. Tente novamente.'
+  if (failure.code === 'ERR_NETWORK')
+    return 'Não foi possível obter resposta do backend. Verifique a conexão e tente novamente.'
+  const message = apiError(error, 'Não foi possível atualizar o histórico. Tente novamente.')
+  return failure.response?.status ? `${message} (HTTP ${failure.response.status})` : message
 }

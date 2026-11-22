@@ -29,7 +29,7 @@
         >Histórico</v-btn
       >
     </div>
-    <EnvironmentalHistory v-if="view === 'history'" />
+    <EnvironmentalHistory v-if="view === 'history'" @new="newFromHistory" />
     <div v-show="view === 'calculate'">
       <nav class="steps" aria-label="Etapas da análise">
         <v-btn :variant="step === 1 ? 'tonal' : 'text'" :disabled="busy" @click="step = 1"
@@ -166,6 +166,21 @@
             :disabled="busy"
         /></template>
         <template v-if="indicator === 'ifc'">
+          <p v-if="datesLoading" class="note">Consultando datas presentes nas camadas…</p>
+          <v-alert v-if="datesError" type="warning" class="mb-4">{{ datesError }}</v-alert>
+          <details v-if="focusData.length" class="advanced">
+            <summary>Datas presentes nos dados ({{ availableDays.length }} dias)</summary>
+            <p class="note">
+              Dias com registros não comprovam cobertura contínua nem ausência de focos nos demais
+              dias.
+            </p>
+            <p v-for="layer in focusData" :key="layer.layerId" class="note">
+              {{ layers.get(layer.layerId)?.name ?? 'Camada selecionada' }}:
+              {{ layer.days.map((item) => item.date).join(', ') || 'Nenhuma data válida' }}.
+              {{ layer.undatedRecords }} registro(s) sem data válida.
+            </p>
+          </details>
+          <v-alert v-if="periodWarning" type="warning" class="mb-4">{{ periodWarning }}</v-alert>
           <v-select
             :menu-props="{ contentClass: 'environmental-menu' }"
             v-model="ifcPeriod"
@@ -250,6 +265,10 @@
             >Calcular e salvar</v-btn
           >
         </div>
+        <p v-if="!grouped" class="note">
+          O histórico está disponível por cálculo. O agrupamento em relatórios ainda não está
+          disponível neste ambiente.
+        </p>
         <p class="note mt-3">
           O cálculo salvo poderá ser reaberto no Histórico. No resultado, escolha CSV, Excel ou PDF
           / imprimir.
@@ -310,6 +329,7 @@
           </dl>
         </div>
         <p class="note">Calculado em {{ calculatedAt }} · {{ result.projecaoCalculo }}</p>
+        <EnvironmentalQuality :result="result" :area-name="featureName" />
         <EnvironmentalResultActions v-if="snapshot" :snapshot="snapshot" />
         <details>
           <summary>Fontes utilizadas e rastreabilidade</summary>
@@ -323,7 +343,15 @@
   </section>
 </template>
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import EnvironmentalQuality from './EnvironmentalQuality.vue'
+import {
+  reportsAvailable,
+  createReport,
+  calculateReportArea,
+  recordReportFailure,
+} from '@/services/environmentalReports'
+import { layerData, type LayerData } from '@/services/environmentalIndicators'
 import EnvironmentalHistory from './EnvironmentalHistory.vue'
 import EnvironmentalBatchResults from './EnvironmentalBatchResults.vue'
 import {
@@ -347,6 +375,33 @@ import {
 } from '@/services/environmentalIndicators'
 import { apiError } from '@/services/contracts'
 defineEmits<{ manageLayers: [] }>()
+const grouped = ref(false)
+onMounted(async () => {
+  try {
+    grouped.value = await reportsAvailable()
+  } catch {
+    grouped.value = false
+  }
+})
+const focusData = ref<LayerData[]>([]),
+  datesLoading = ref(false),
+  datesError = ref('')
+let datesEpoch = 0
+const availableDays = computed(() =>
+  [...new Set(focusData.value.flatMap((layer) => layer.days.map((day) => day.date)))].sort(),
+)
+const periodWarning = computed(() => {
+  const from = ifcPeriod.value === 'day' ? day.value : start.value
+  const to = ifcPeriod.value === 'day' ? day.value : end.value
+  if (!iso(from) || !iso(to) || to < from || !focusData.value.length) return ''
+  const found = availableDays.value.filter((date) => date >= from && date <= to).length
+  if (!found)
+    return 'As camadas selecionadas não têm registros neste período. O resultado será identificado como sem dados.'
+  const missing = Math.round((Date.parse(to) - Date.parse(from)) / 86400000) + 1 - found
+  return missing > 0
+    ? `${missing} dia(s) sem registros no período. As datas presentes não comprovam cobertura contínua.`
+    : ''
+})
 const view = ref('calculate')
 const panelElement = ref<HTMLElement | null>(null)
 const step = ref(1),
@@ -418,12 +473,43 @@ function selectAreas(value: number | number[] | null) {
   if (selectionMode.value === 'multiple') featureIds.value = Array.isArray(value) ? value : []
   else featureId.value = typeof value === 'number' ? value : null
 }
+watch(
+  () => inputs.value.focos?.join(',') ?? '',
+  async () => {
+    const request = ++datesEpoch
+    focusData.value = []
+    datesError.value = ''
+    const ids = inputs.value.focos ?? []
+    if (!ids.length) {
+      datesLoading.value = false
+      return
+    }
+    datesLoading.value = true
+    try {
+      const data = await Promise.all(ids.map(layerData))
+      if (request !== datesEpoch) return
+      focusData.value = data
+      if (!day.value || !availableDays.value.includes(day.value))
+        day.value = availableDays.value[availableDays.value.length - 1] ?? ''
+    } catch {
+      if (request === datesEpoch)
+        datesError.value =
+          'Não foi possível consultar as datas das camadas. Confira o conteúdo antes de calcular.'
+    } finally {
+      if (request === datesEpoch) datesLoading.value = false
+    }
+  },
+)
 let searchTimer: ReturnType<typeof setTimeout> | undefined
 function featureSearchChanged(value: string) {
   if (busy.value || featureOptions.value.some((f) => f.name === value)) return
   clearTimeout(searchTimer)
   query.value = value || ''
   searchTimer = setTimeout(() => void searchFeatures(0), 300)
+}
+function newFromHistory() {
+  newCalculation()
+  view.value = 'calculate'
 }
 function newCalculation() {
   if (busy.value) return
@@ -483,9 +569,10 @@ const valid = computed(
         !!reason.value.trim())) &&
     (indicator.value !== 'idesmat' || iso(end.value)) &&
     (indicator.value !== 'ifc' ||
-      (ifcPeriod.value === 'day'
-        ? iso(day.value)
-        : iso(start.value) && iso(end.value) && start.value <= end.value)),
+      (!datesLoading.value &&
+        (ifcPeriod.value === 'day'
+          ? iso(day.value)
+          : iso(start.value) && iso(end.value) && start.value <= end.value))),
 )
 let epoch = 0
 async function searchFeatures(page: number) {
@@ -557,6 +644,7 @@ watch(
 )
 onBeforeUnmount(() => {
   stopping.value = true
+  datesEpoch++
   epoch++
   clearTimeout(searchTimer)
 })
@@ -600,6 +688,15 @@ async function run(save = false) {
         error.value = 'Processamento interrompido antes do primeiro cálculo.'
         return
       }
+      const report =
+        save && grouped.value
+          ? await createReport(
+              areaLayer.value!,
+              batchAreas.value,
+              indicator.value,
+              batchParameters.value,
+            )
+          : null
       await calculateAreas(
         batchAreas.value,
         indicator.value,
@@ -607,14 +704,39 @@ async function run(save = false) {
         save,
         () => stopping.value,
         (entry) => batchEntries.value.push(entry),
+        report?.id,
       )
       return
     }
-    const data = await (save ? calculateAndSave : calculate)(
-      featureId.value!,
-      indicator.value,
-      params,
-    )
+    const report =
+      save && grouped.value
+        ? await createReport(
+            areaLayer.value!,
+            [{ id: featureId.value!, name: featureName.value }],
+            indicator.value,
+            params,
+          )
+        : null
+    let data: Record<string, unknown>
+    try {
+      data = report
+        ? await calculateReportArea(report.id, featureId.value!)
+        : await (save ? calculateAndSave : calculate)(featureId.value!, indicator.value, params)
+    } catch (failure) {
+      if (report) {
+        const networkFailure =
+          (failure as { isAxiosError?: boolean; response?: unknown }).isAxiosError &&
+          !(failure as { response?: unknown }).response
+        if (!networkFailure) {
+          try {
+            await recordReportFailure(report.id, featureId.value!, apiError(failure))
+          } catch {
+            /* A consulta do histórico permite conferir o estado confirmado pelo servidor. */
+          }
+        }
+      }
+      throw failure
+    }
     result.value = data
     snapshot.value = JSON.parse(
       JSON.stringify({

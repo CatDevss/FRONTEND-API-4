@@ -1,3 +1,4 @@
+import { resultAvailability, resultRepairs } from './environmentalQuality'
 import axios from 'axios'
 import type { AnalysisArea, AreaCalculation } from './environmentalBatch'
 export interface CalculationSnapshot {
@@ -83,6 +84,7 @@ export function reportRows(snapshot: CalculationSnapshot): ReportRow[] {
       rows.push([label, key, value(source[key]), ''])
   }
   if (!sources.length) rows.push(['Fontes', 'Origem', 'Não disponível', ''])
+  rows.push(...qualityRows(r))
   return rows
 }
 export function batchReportRows(
@@ -90,12 +92,26 @@ export function batchReportRows(
   entries: AreaCalculation[],
   indicator: string,
   parameters: Record<string, unknown>,
+  context: Record<string, unknown> = {},
 ): ReportRow[] {
   const rows: ReportRow[] = [
     ['Área / seção', 'Campo', 'Valor', 'Unidade'],
     ['Relatório', 'Indicador', indicator.toUpperCase(), ''],
     ['Relatório', 'Áreas solicitadas', areas.length, ''],
-    ['Relatório', 'Resultados disponíveis', entries.filter((e) => e.snapshot).length, ''],
+    [
+      'Relatório',
+      'Resultados com dados',
+      entries.filter((e) => e.snapshot && resultAvailability(e.snapshot.result) !== 'Sem dados')
+        .length,
+      '',
+    ],
+    [
+      'Relatório',
+      'Resultados sem dados',
+      entries.filter((e) => e.snapshot && resultAvailability(e.snapshot.result) === 'Sem dados')
+        .length,
+      '',
+    ],
     [
       'Relatório',
       'Observação',
@@ -105,12 +121,19 @@ export function batchReportRows(
   ]
   for (const [key, v] of Object.entries(parameters))
     rows.push(['Parâmetros', key, Array.isArray(v) ? v.join(', ') : value(v), ''])
+  for (const [key, v] of Object.entries(context))
+    rows.push(['Filtros do relatório', key, value(v), ''])
   const indexed = new Map(entries.map((e) => [e.area.id, e]))
   const sources = new Map<string, Record<string, unknown>>()
   for (const area of areas) {
     const entry = indexed.get(area.id),
       snapshot = entry?.snapshot
-    rows.push([area.name, 'Identificador da feição', area.id, ''])
+    rows.push([
+      area.name,
+      'Identificador da feição',
+      snapshot?.featureId ?? area.featureId ?? area.id,
+      '',
+    ])
     if (!snapshot) {
       rows.push([
         area.name,
@@ -122,6 +145,17 @@ export function batchReportRows(
       continue
     }
     const r = snapshot.result
+    rows.push([area.name, 'Número do cálculo', value(r.calculoId), ''])
+    for (const [key, parameter] of Object.entries(snapshot.parameters))
+      rows.push([
+        area.name,
+        `Parâmetro · ${key}`,
+        Array.isArray(parameter) ? parameter.join(', ') : value(parameter),
+        '',
+      ])
+    if (Array.isArray(r.fontes))
+      for (const source of r.fontes)
+        rows.push([area.name, 'Fonte utilizada', JSON.stringify(source), ''])
     rows.push(
       [
         area.name,
@@ -146,6 +180,14 @@ export function batchReportRows(
               unit,
             ])
     }
+    rows.push(
+      ...qualityRows(r).map(([section, field, val, unit]): ReportRow => [
+        area.name,
+        `${section} · ${field}`,
+        val,
+        unit,
+      ]),
+    )
     if (Array.isArray(r.fontes))
       for (const source of r.fontes as Record<string, unknown>[])
         sources.set(JSON.stringify(source), source)
@@ -154,6 +196,43 @@ export function batchReportRows(
     for (const [key, v] of Object.entries(source))
       rows.push([`Fonte ${index + 1}`, key, value(v), ''])
   if (!sources.size) rows.push(['Fontes', 'Origem', 'Não disponível', ''])
+  return rows
+}
+
+function qualityRows(result: Record<string, unknown>): ReportRow[] {
+  const rows: ReportRow[] = [['Dados', 'Disponibilidade', resultAvailability(result), '']]
+  for (const group of metricGroups) {
+    const metrics = result[group]
+    if (!metrics || typeof metrics !== 'object') continue
+    for (const [key, label] of Object.entries({
+      mensagem: 'Observação',
+      registrosNoPeriodo: 'Registros no período',
+      diasComRegistros: 'Dias com registros',
+      diasSolicitados: 'Dias solicitados',
+      diasSemRegistros: 'Dias sem registros',
+    }))
+      if (key in metrics)
+        rows.push([group, label, value((metrics as Record<string, unknown>)[key]), ''])
+  }
+  const repairs = resultRepairs(result)
+  rows.push([
+    'Geometrias',
+    'Feições com reparo registrado',
+    Array.isArray(result.reparos)
+      ? new Set(repairs.map((repair) => repair.feicaoId)).size
+      : 'Não informado',
+    '',
+  ])
+  for (const repair of repairs) {
+    rows.push([
+      'Reparo',
+      'Feição / papel',
+      `${repair.nome ?? repair.feicaoId} · ${repair.papel}`,
+      '',
+    ])
+    for (const [key, val] of Object.entries(repair.registro))
+      rows.push(['Reparo', key, value(typeof val === 'object' ? JSON.stringify(val) : val), ''])
+  }
   return rows
 }
 

@@ -127,6 +127,33 @@ describe('formulário ambiental', () => {
     expect(panel.text()).not.toContain('Data inicial')
     panel.unmount()
   })
+  it('preenche o boletim com a data dos registros e avisa quando outro dia não tem dados', async () => {
+    vi.mocked(axios.get).mockImplementation(async (url) => ({
+      data: String(url).endsWith('/dados')
+        ? {
+            layerId: 43,
+            days: [{ date: '2026-10-20', records: 3 }],
+            records: 3,
+            undatedRecords: 0,
+            repairedFeatures: 0,
+            repairs: [],
+          }
+        : { enabled: false, items: [], total: 0 },
+    }))
+    const panel = mountPanel()
+    const input = (label: string) =>
+      panel.findAllComponents({ name: 'TestInput' }).find((c) => c.props('label') === label)!
+    input('Indicador').vm.$emit('update:modelValue', 'ifc')
+    await flushPromises()
+    panel.findAllComponents({ name: 'TestPicker' })[1]!.vm.$emit('update:modelValue', [43])
+    await flushPromises()
+    expect(input('Data do boletim').props('modelValue')).toBe('2026-10-20')
+    expect(panel.text()).toContain('Dias com registros não comprovam cobertura contínua')
+    input('Data do boletim').vm.$emit('update:modelValue', '2026-10-21')
+    await flushPromises()
+    expect(panel.text()).toContain('As camadas selecionadas não têm registros neste período')
+    panel.unmount()
+  })
   it('calcula apenas após seleção e mantém percentual nulo como indisponível', async () => {
     vi.mocked(axios.get).mockResolvedValue({
       data: {

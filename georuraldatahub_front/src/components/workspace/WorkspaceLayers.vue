@@ -310,6 +310,26 @@
               }}<span v-if="detail.layer.srid === 4326"> · WGS84, longitude e latitude</span>
             </dd>
           </dl>
+          <p v-if="metadataError" class="detail-explanation">{{ metadataError }}</p>
+          <template v-if="metadata">
+            <p class="detail-explanation">
+              {{ metadata.repairedFeatures }} feição(ões) com reparo registrado na importação.
+            </p>
+            <details v-if="metadata.repairs.length">
+              <summary>Consultar reparos (até 20 registros)</summary>
+              <p v-for="repair in metadata.repairs" :key="repair.featureId">{{ repair.name }}</p>
+            </details>
+            <details v-if="metadata.days.length">
+              <summary>Datas com registros ({{ metadata.days.length }} dias)</summary>
+              <p class="detail-explanation">
+                {{ metadata.days.map((day) => day.date).join(', ') }}. Dias com registros não
+                comprovam cobertura contínua.
+              </p>
+            </details>
+            <p v-if="metadata.undatedRecords" class="detail-explanation">
+              {{ metadata.undatedRecords }} registro(s) sem data de evento válida.
+            </p>
+          </template>
           <h3 class="origins-heading">Arquivos e fontes</h3>
           <article
             v-for="origin in detail.origins.length ? detail.origins : [detail.layer]"
@@ -343,6 +363,8 @@ import {
   listVersions,
   importLayer,
   layerDetails,
+  layerData,
+  type LayerData,
   combineLayers,
   type Layer,
   type ImportableVersion,
@@ -373,6 +395,8 @@ const showImport = ref(false),
   versionPage = ref(0),
   versionTotal = ref(0),
   versionsLoading = ref(false)
+const metadata = ref<LayerData | null>(null),
+  metadataError = ref('')
 const showDetails = ref(false),
   detail = ref<{ layer: Layer; origins: Layer[] } | null>(null),
   showCombine = ref(false),
@@ -469,11 +493,21 @@ function openImport() {
 }
 async function details(id: number) {
   const request = ++detailEpoch
+  metadata.value = null
+  metadataError.value = ''
   try {
     const data = await layerDetails(id)
     if (request !== detailEpoch) return
     detail.value = data
     showDetails.value = true
+    void layerData(id)
+      .then((value) => {
+        if (request === detailEpoch) metadata.value = value
+      })
+      .catch(() => {
+        if (request === detailEpoch)
+          metadataError.value = 'Datas e registros de reparo indisponíveis para consulta.'
+      })
   } catch (e) {
     if (request === detailEpoch) error.value = apiError(e)
   }

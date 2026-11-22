@@ -37,6 +37,7 @@ export const permissionRoles = {
   'dictionaries.generate': ['GESTOR', 'OPERADOR'],
   'datasets.read': ['GESTOR', 'OPERADOR', 'ANALISTA', 'AUDITOR'],
   'datasets.manage': ['OPERADOR'],
+  'reports.delete': ['ADMIN', 'GESTOR', 'OPERADOR', 'ANALISTA'],
   'map.read': ['GESTOR', 'OPERADOR', 'ANALISTA', 'AUDITOR'],
   'ingestion.run': ['OPERADOR'],
   'quarantine.read': readers,
