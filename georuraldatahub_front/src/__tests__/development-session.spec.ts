@@ -10,6 +10,8 @@ beforeEach(() => {
   vi.clearAllMocks()
   sessionStorage.clear()
   vi.stubEnv('DEV', true)
+  // A prévia de cargo é o modo sem Keycloak.
+  vi.stubEnv('VITE_KEYCLOAK_ENABLED', 'false')
   vi.mocked(axios.get).mockResolvedValue({ data: [gestor, operator] })
 })
 afterEach(() => {

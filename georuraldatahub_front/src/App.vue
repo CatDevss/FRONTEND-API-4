@@ -106,8 +106,10 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import { useRoute, useRouter } from 'vue-router'
 import { allowedNavigation, sessionUser, setSessionUser, can } from '@/access/session'
 import { cancelUpload } from '@/composables/uploadLock'
+import { keycloakEnabled, logout as logoutKeycloak } from '@/access/keycloak'
 
 function logout() {
+  if (keycloakEnabled) return void logoutKeycloak()
   if (import.meta.env.DEV) selectPreviewUser(null)
   setSessionUser(null)
 }
@@ -125,7 +127,8 @@ watch(
       void router.replace(allowedNavigation()[0]?.to ?? '/access-required')
   },
 )
-const development = import.meta.env.DEV
+// A prévia de cargo só aparece em desenvolvimento e sem o login do Keycloak.
+const development = import.meta.env.DEV && !keycloakEnabled
 const sidebarCollapsed = ref(false)
 const sessionLabel = computed(() =>
   sessionUser.value ? `${sessionUser.value.name} — ${sessionUser.value.userType}` : 'Sem sessão',
