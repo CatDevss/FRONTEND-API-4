@@ -29,7 +29,10 @@ const leaflet = vi.hoisted(() => {
     })),
     invalidateSize: vi.fn(),
     remove: vi.fn(),
+    openTooltip: vi.fn(),
+    closeTooltip: vi.fn(),
   }
+  const tooltip = { setContent: vi.fn().mockReturnThis(), setLatLng: vi.fn().mockReturnThis() }
   function bounds(initial: unknown[] = []) {
     let valid = initial.length > 0
     return {
@@ -68,6 +71,7 @@ const leaflet = vi.hoisted(() => {
     map: vi.fn(() => map),
     latLngBounds: vi.fn(bounds),
     geoJSON,
+    tooltip: vi.fn(() => tooltip),
     tileLayer: vi.fn(() => ({ addTo: vi.fn() })),
     circleMarker: vi.fn(() => ({
       addTo: vi.fn().mockReturnThis(),
@@ -76,7 +80,7 @@ const leaflet = vi.hoisted(() => {
     })),
     control,
   }
-  return { map, lib, groups, attached }
+  return { map, lib, groups, attached, tooltip }
 })
 vi.mock('leaflet', () => ({ default: leaflet.lib }))
 vi.mock('axios', () => ({ default: { get: vi.fn(), isAxiosError: () => true } }))
@@ -488,5 +492,95 @@ describe('indicator map matches workspace cartography', () => {
     wrapper.findComponent(WorkspaceInspection).vm.$emit('close')
     await flushPromises()
     expect(wrapper.findComponent(WorkspaceInspection).exists()).toBe(false)
+  })
+})
+
+describe('balão do imóvel ao passar o mouse', () => {
+  const imoveis: FeatureCollection = {
+    type: 'FeatureCollection',
+    features: [
+      {
+        type: 'Feature',
+        geometry: {
+          type: 'Polygon',
+          coordinates: [
+            [
+              [-50, -26],
+              [-48, -26],
+              [-48, -24],
+              [-50, -24],
+              [-50, -26],
+            ],
+          ],
+        },
+        properties: {
+          cod_imovel: 'PR-4103800-ABC',
+          nom_munici: 'Cambira',
+          num_area: 12.5,
+          camada: 'CAMADA-OCULTA',
+          arquivo: 'ARQUIVO-OCULTO',
+          nom_tema: 'TEMA-OCULTO',
+          cod_tema: 'COD-OCULTO',
+        },
+      },
+    ],
+  }
+  let frame: FrameRequestCallback | null = null
+  function mouseAt(lat: number, lng: number) {
+    const move = leaflet.map.on.mock.calls.find((call) => call[0] === 'mousemove')![1]
+    move({ latlng: { lat, lng } })
+    frame?.(0)
+    frame = null
+  }
+  function shown() {
+    const content = leaflet.tooltip.setContent.mock.calls.slice(-1)[0]![0] as HTMLElement
+    return content.textContent ?? ''
+  }
+  beforeEach(() => {
+    frame = null
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      frame = callback
+      return 1
+    })
+    vi.stubGlobal('cancelAnimationFrame', vi.fn())
+  })
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('mostra os dados do imóvel sem camada, arquivo, nom_tema e cod_tema', async () => {
+    vi.mocked(axios.get).mockResolvedValue({ data: imoveis })
+    setup()
+    await flushPromises()
+    mouseAt(-25, -49)
+    expect(leaflet.map.openTooltip).toHaveBeenCalled()
+    expect(shown()).toContain('PR-4103800-ABC')
+    expect(shown()).toContain('Cambira')
+    expect(shown()).toContain('12,5')
+    for (const hidden of ['CAMADA-OCULTA', 'ARQUIVO-OCULTO', 'TEMA-OCULTO', 'COD-OCULTO'])
+      expect(shown()).not.toContain(hidden)
+  })
+  it('esconde o balão ao sair do imóvel, ao sair do mapa e ao desligar a camada', async () => {
+    vi.mocked(axios.get).mockResolvedValue({ data: imoveis })
+    const { workspace } = setup()
+    await flushPromises()
+    mouseAt(-25, -49)
+    leaflet.map.closeTooltip.mockClear()
+    mouseAt(0, 0)
+    expect(leaflet.map.closeTooltip).toHaveBeenCalledTimes(1)
+    mouseAt(-25, -49)
+    leaflet.map.closeTooltip.mockClear()
+    leaflet.map.on.mock.calls.find((call) => call[0] === 'mouseout')![1]()
+    expect(leaflet.map.closeTooltip).toHaveBeenCalledTimes(1)
+    mouseAt(-25, -49)
+    leaflet.map.closeTooltip.mockClear()
+    workspace.setVisibility(11, false)
+    await flushPromises()
+    expect(leaflet.map.closeTooltip).toHaveBeenCalled()
+  })
+  it('não mostra balão para feições que não são imóveis do CAR', async () => {
+    setup()
+    await flushPromises()
+    mouseAt(-25, -49)
+    expect(leaflet.lib.tooltip).not.toHaveBeenCalled()
+    expect(leaflet.map.openTooltip).not.toHaveBeenCalled()
   })
 })

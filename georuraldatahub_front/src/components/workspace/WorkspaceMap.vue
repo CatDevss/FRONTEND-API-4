@@ -23,9 +23,11 @@ import type { FeatureCollection } from 'geojson'
 import {
   featuresAt,
   indexFeatures,
+  type HitQuery,
   type IndexedFeature,
   type MapInspection,
 } from '@/services/mapInspection'
+import { isCarProperty, tooltipElement, tooltipRows } from '@/services/propertyTooltip'
 import { apiError } from '@/services/contracts'
 import { useWorkspaceStore } from '@/stores/workspace'
 import 'leaflet/dist/leaflet.css'
@@ -56,15 +58,11 @@ function closeInspection() {
   inspectionMarker = null
   emit('inspect', null)
 }
-function refreshInspection() {
-  if (!map || !inspected) return
-  const currentMap = map,
-    point = inspected
-  const pixel = currentMap.latLngToContainerPoint(point),
-    tolerance = 7
+function hitQuery(currentMap: L.Map, point: L.LatLng, tolerance: number): HitQuery {
+  const pixel = currentMap.latLngToContainerPoint(point)
   const northWest = currentMap.containerPointToLatLng([pixel.x - tolerance, pixel.y - tolerance])
   const southEast = currentMap.containerPointToLatLng([pixel.x + tolerance, pixel.y + tolerance])
-  const query = {
+  return {
     longitude: point.lng,
     latitude: point.lat,
     pixel,
@@ -74,10 +72,69 @@ function refreshInspection() {
       Math.min(northWest.lat, southEast.lat),
       Math.max(northWest.lng, southEast.lng),
       Math.max(northWest.lat, southEast.lat),
-    ] as [number, number, number, number],
+    ],
     project: (position: number[]) =>
       currentMap.latLngToContainerPoint([position[1]!, position[0]!]),
   }
+}
+// Balão ao passar o mouse sobre um imóvel do CAR de qualquer camada ativa.
+let hoverTooltip: L.Tooltip | null = null,
+  hoveredFeature: object | null = null,
+  hoverPoint: L.LatLng | null = null,
+  hoverFrame = 0
+function hideHover() {
+  hoveredFeature = null
+  if (hoverTooltip) map?.closeTooltip(hoverTooltip)
+}
+function featureUnderCursor(point: L.LatLng) {
+  if (!map) return null
+  const query = hitQuery(map, point, 3)
+  for (const reference of workspace.availableReferences) {
+    if (!workspace.isVisible(reference.fileId)) continue
+    const index = featureIndexes.get(reference.fileId)
+    if (!index) continue
+    const found = featuresAt(index, query).find((feature) => isCarProperty(feature.properties))
+    if (found) return found
+  }
+  return null
+}
+function updateHover(point: L.LatLng) {
+  const feature = featureUnderCursor(point)
+  if (!map || !feature) return hideHover()
+  hoverTooltip ??= L.tooltip({
+    direction: 'top',
+    offset: [0, -8],
+    opacity: 1,
+    className: 'property-tooltip',
+  })
+  // Só remonta o conteúdo quando o mouse muda de imóvel.
+  if (feature !== hoveredFeature) {
+    hoveredFeature = feature
+    hoverTooltip.setContent(tooltipElement(tooltipRows(feature.properties)))
+  }
+  hoverTooltip.setLatLng(point)
+  map.openTooltip(hoverTooltip)
+}
+// No máximo uma busca por quadro, para não pesar enquanto o mouse se move.
+function scheduleHover(point: L.LatLng) {
+  hoverPoint = point
+  if (hoverFrame) return
+  hoverFrame = requestAnimationFrame(() => {
+    hoverFrame = 0
+    if (hoverPoint) updateHover(hoverPoint)
+  })
+}
+function stopHover() {
+  hoverPoint = null
+  if (hoverFrame) cancelAnimationFrame(hoverFrame)
+  hoverFrame = 0
+  hideHover()
+}
+function refreshInspection() {
+  if (!map || !inspected) return
+  const currentMap = map,
+    point = inspected
+  const query = hitQuery(currentMap, point, 7)
   const result: MapInspection = {
     latitude: point.lat,
     longitude: point.lng,
@@ -143,6 +200,7 @@ function clear() {
   cache.clear()
   featureIndexes.clear()
   closeInspection()
+  stopHover()
   cursor.value = ''
   notice.value = ''
   map?.closePopup()
@@ -209,6 +267,7 @@ async function loadLayer(id: number) {
 }
 function sync() {
   if (!map) return
+  hideHover()
   for (const [id, layer] of cache) {
     layer.setStyle((feature) => styleFor(id, feature?.geometry?.type))
     if (workspace.isVisible(id)) {
@@ -288,9 +347,11 @@ onMounted(() => {
   map.on('zoomend', refreshInspection)
   map.on('mousemove', (event: L.LeafletMouseEvent) => {
     cursor.value = `${event.latlng.lat.toFixed(5)}, ${event.latlng.lng.toFixed(5)}`
+    scheduleHover(event.latlng)
   })
   map.on('mouseout', () => {
     cursor.value = ''
+    stopHover()
   })
   if (typeof ResizeObserver !== 'undefined') {
     observer = new ResizeObserver(resize)
@@ -314,10 +375,39 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', resize)
   map?.remove()
   map = null
+  hoverTooltip = null
 })
 defineExpose({ fitVisibleLayers, resetView, closeInspection })
 </script>
 <style scoped>
+.map-shell :deep(.leaflet-tooltip.property-tooltip) {
+  padding: 8px 10px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.16);
+  border-radius: 10px;
+  background: rgba(var(--v-theme-surface), 0.97);
+  color: rgb(var(--v-theme-on-surface));
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.3);
+  font-size: 11px;
+  line-height: 1.45;
+  pointer-events: none;
+}
+.map-shell :deep(.property-tooltip.leaflet-tooltip-top::before) {
+  border-top-color: rgba(var(--v-theme-surface), 0.97);
+}
+.map-shell :deep(.property-tooltip-body > div) {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+}
+.map-shell :deep(.property-tooltip-body span) {
+  opacity: 0.6;
+}
+.map-shell :deep(.property-tooltip-body strong) {
+  max-width: 260px;
+  overflow-wrap: anywhere;
+  font-weight: 600;
+  text-align: right;
+}
 .map-shell {
   height: 100%;
   min-height: 0;
