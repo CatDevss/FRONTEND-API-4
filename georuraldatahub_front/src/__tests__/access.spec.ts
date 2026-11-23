@@ -35,6 +35,7 @@ describe('role permissions and login integration boundary', () => {
   it.each(roles)('%s only manages dictionaries and official sources when it is GESTOR', (role) => {
     expect(roleCan(role, 'sources.create')).toBe(role === 'GESTOR')
     expect(roleCan(role, 'dictionaries.manage')).toBe(role === 'GESTOR')
+    expect(roleCan(role, 'dictionaries.generate')).toBe(role === 'GESTOR' || role === 'OPERADOR')
   })
   it.each(['ANALISTA', 'AUDITOR'] as const)('%s has read-only data access', (role) => {
     assume(role)

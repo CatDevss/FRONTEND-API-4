@@ -10,9 +10,9 @@
     <div>Dicionário {{ report.dictionaryId }}, versão {{ report.dictionaryVersion }}.</div>
     <div>
       {{
-        report.status === 'REJEITADO'
-          ? 'Arquivo bloqueado para tratamento e visualização.'
-          : 'Somente os registros aprovados ficam disponíveis para tratamento e visualização.'
+        report.status === 'VALIDO'
+          ? 'Arquivo integralmente aprovado pelo dicionário: versão TRATADA gerada. A visualização no workspace depende de conteúdo espacial.'
+          : 'Arquivo inteiro em quarentena. As contagens são diagnósticas; registros válidos não são disponibilizados separadamente.'
       }}
     </div>
   </v-alert>

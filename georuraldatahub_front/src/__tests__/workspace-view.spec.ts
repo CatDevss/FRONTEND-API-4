@@ -23,10 +23,15 @@ const Tabs = defineComponent({
 const mapCalls = { mount: vi.fn(), unmount: vi.fn(), fit: vi.fn(), reset: vi.fn() }
 const MapSurface = defineComponent({
   props: ['visible', 'insets'],
-  setup(_, { expose }) {
+  emits: ['inspect'],
+  setup(_, { expose, emit }) {
     onMounted(mapCalls.mount)
     onBeforeUnmount(mapCalls.unmount)
-    expose({ fitVisibleLayers: mapCalls.fit, resetView: mapCalls.reset })
+    expose({
+      fitVisibleLayers: mapCalls.fit,
+      resetView: mapCalls.reset,
+      closeInspection: () => emit('inspect', null),
+    })
   },
   template: '<div class="test-map" />',
 })
@@ -94,6 +99,8 @@ async function setup(options: { empty?: boolean; noLayers?: boolean } = {}) {
     global: {
       plugins: [pinia, router],
       stubs: {
+        WorkspaceLayers: { template: '<section>Catálogo de camadas</section>' },
+        WorkspaceIndicators: { template: '<section>Formulário de indicadores</section>' },
         VCard: Container,
         VBtn: Button,
         VTabs: Tabs,
@@ -121,6 +128,37 @@ beforeEach(() => {
   setSessionUser({ id: 1, name: 'Operador', userType: 'OPERADOR', userStatus: 1 })
 })
 describe('workspace explorer and tabs', () => {
+  it('opens the side panel from a map selection and closes it without remounting the map', async () => {
+    const { wrapper } = await setup()
+    const map = wrapper.findComponent(MapSurface)
+    map.vm.$emit('inspect', {
+      latitude: -25,
+      longitude: -49,
+      groups: [
+        {
+          fileId: 11,
+          name: 'Biomas',
+          color: '#FF8A1F',
+          features: [{ type: 'Feature', geometry: null, properties: { bioma: 'Mata Atlântica' } }],
+        },
+        {
+          fileId: 12,
+          name: 'Províncias',
+          color: '#00D5FF',
+          features: [{ type: 'Feature', geometry: null, properties: { provincia: 'Paraná' } }],
+        },
+      ],
+      pending: [],
+      failed: [],
+    })
+    await flushPromises()
+    expect(wrapper.find('.inspection-position').text()).toContain('Mata Atlântica')
+    expect(wrapper.find('.inspection-position').text()).toContain('Paraná')
+    await wrapper.get('button[aria-label="Fechar informações do local"]').trigger('click')
+    expect(wrapper.find('.inspection-position').exists()).toBe(false)
+    expect(mapCalls.mount).toHaveBeenCalledOnce()
+  })
+
   it('shows dataset → source → file → layer and keeps files with no layer in the explorer', async () => {
     const { wrapper, workspace } = await setup()
     expect(wrapper.find('.dataset-row').text()).toBe('Paraná integrado')
@@ -128,17 +166,29 @@ describe('workspace explorer and tabs', () => {
     expect(wrapper.findAll('details.file-node')).toHaveLength(2)
     expect(wrapper.text()).toContain('dados_sem_geometria.csv')
     expect(wrapper.find('.layer-name').text()).toBe('Feições municipais')
-    expect(wrapper.text()).toContain('Sem referência de visualização')
+    expect(wrapper.text()).toContain('Prévia indisponível')
     await wrapper.find('input[type="checkbox"]').setValue(true)
     expect(workspace.isVisible(11)).toBe(true)
   })
-  it('shows Medidores without requesting or calculating indicators', async () => {
+  it('keeps map overlays out of data screens', async () => {
+    const { wrapper, workspace } = await setup()
+    workspace.activeTab = 'layers'
+    await flushPromises()
+    expect(wrapper.find('.workspace').classes()).toContain('showing-meters')
+    expect(wrapper.find('.workspace-messages').exists()).toBe(false)
+    expect(wrapper.find<HTMLElement>('.workspace-footer').element.style.display).toBe('none')
+    expect(wrapper.find<HTMLElement>('#workspace-explorer').element.style.display).toBe('none')
+    expect(wrapper.text()).toContain('Catálogo de camadas')
+    workspace.activeTab = 'map'
+    await flushPromises()
+    expect(wrapper.find<HTMLElement>('.workspace-footer').element.style.display).not.toBe('none')
+  })
+  it('opens the indicator panel while preserving map state', async () => {
     const { wrapper, workspace } = await setup()
     wrapper.findComponent(Tabs).vm.$emit('update:modelValue', 'meters')
     await flushPromises()
     expect(workspace.activeTab).toBe('meters')
-    expect(wrapper.text()).toContain('Medidores ainda não disponíveis')
-    expect(wrapper.text()).toContain('Nenhum indicador é calculado no navegador')
+    expect(wrapper.text()).toContain('Formulário de indicadores')
     expect(
       vi
         .mocked(axios.get)

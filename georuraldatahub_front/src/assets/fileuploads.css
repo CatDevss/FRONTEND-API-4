@@ -69,7 +69,6 @@
   color: rgba(var(--v-theme-on-surface), 0.55);
 }
 
-
 .stage-bruta {
   --stage-color: var(--v-theme-primary);
 }
@@ -236,7 +235,6 @@
   line-height: 1.5;
 }
 
-
 .file-library {
   border: 1px solid var(--glass-outer-border);
   border-radius: 18px;
@@ -274,7 +272,6 @@
   margin: 0 20px 16px;
 }
 
-
 .files-table {
   width: 100%;
   overflow-x: auto;
@@ -282,12 +279,11 @@
 
 .files-table :deep(table) {
   width: 100%;
-  min-width: 1050px;
+  min-width: 1100px;
   table-layout: fixed;
   border-collapse: collapse;
 }
 
-/* Cabeçalho: todas as colunas centralizadas */
 .files-table :deep(th) {
   padding: 14px 10px !important;
   font-size: 13px;
@@ -298,7 +294,6 @@
   border-bottom: 1px solid var(--glass-outer-border);
 }
 
-/* Células */
 .files-table :deep(td) {
   padding: 12px 10px !important;
   text-align: center;
@@ -306,48 +301,45 @@
   border-color: var(--glass-outer-border) !important;
 }
 
-/* Largura das colunas */
 .files-table :deep(th:nth-child(1)),
 .files-table :deep(td:nth-child(1)) {
-  width: 23%;
+  width: 22%;
 }
 
 .files-table :deep(th:nth-child(2)),
 .files-table :deep(td:nth-child(2)) {
-  width: 13%;
+  width: 12%;
 }
 
 .files-table :deep(th:nth-child(3)),
 .files-table :deep(td:nth-child(3)) {
-  width: 8%;
+  width: 7%;
 }
 
 .files-table :deep(th:nth-child(4)),
 .files-table :deep(td:nth-child(4)) {
-  width: 11%;
+  width: 18%;
 }
 
 .files-table :deep(th:nth-child(5)),
 .files-table :deep(td:nth-child(5)) {
-  width: 14%;
+  width: 13%;
 }
 
 .files-table :deep(th:nth-child(6)),
 .files-table :deep(td:nth-child(6)) {
-  width: 12%;
+  width: 10%;
 }
 
 .files-table :deep(th:nth-child(7)),
 .files-table :deep(td:nth-child(7)) {
-  width: 19%;
+  width: 18%;
 }
 
-/* Efeito ao passar o mouse pela linha */
 .file-row:hover {
   background: rgba(var(--v-theme-on-surface), 0.025);
 }
 
-/* Identificação do arquivo */
 .file-identity {
   display: flex;
   align-items: center;
@@ -386,7 +378,6 @@
   overflow-wrap: anywhere;
 }
 
-
 .format-badge {
   display: inline-flex;
   justify-content: center;
@@ -397,7 +388,6 @@
   text-transform: uppercase;
   color: rgba(var(--v-theme-on-surface), 0.65);
 }
-
 
 .file-date {
   font-size: 11px;

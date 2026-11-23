@@ -41,11 +41,12 @@ const files = [
   { ...base, id: 3, name: 'c.csv', hash: 'h3', receivedDate: '2026-10-20T09:30:00' },
 ]
 const stagesData: FileStage[] = [
-  { fileId: 1, status: 'BRUTA', versionNumber: 2, location: 'validada/fontes/2/h1_a.csv' },
+  { fileId: 1, status: 'BRUTA', versionNumber: 1, location: 'bruta/fontes/2/h1_a.csv' },
   { fileId: 2, status: 'BRUTA', versionNumber: 1, location: 'bruta/fontes/2/h2_b.csv' },
   { fileId: 3, status: 'PUBLICADA', versionNumber: 4, location: 'publicada/fontes/2/h3_c.csv' },
 ]
 let stagesResponse: () => Promise<{ data: unknown }>
+let validationResponse: () => Promise<{ data: unknown }>
 const emptyQuarantines: QuarantinePage = {
   content: [],
   page: 0,
@@ -75,9 +76,11 @@ beforeEach(() => {
   vi.resetAllMocks()
   setSessionUser({ id: 7, name: 'Operador', userType: 'OPERADOR', userStatus: 1 })
   stagesResponse = async () => ({ data: stagesData })
+  validationResponse = async () => ({ data: {} })
   quarantinesResponse = async () => ({ data: emptyQuarantines })
   vi.mocked(axios.get).mockImplementation(async (path, config) => {
     if (path === '/arquivos/etapas') return stagesResponse()
+    if (path === '/arquivos/1/validacao') return validationResponse()
     if (path === '/quarentenas')
       return quarantinesResponse((config?.params as { page: number }).page)
     if (path === '/fontes')
@@ -132,7 +135,7 @@ describe('cards por etapa do bucket', () => {
     const wrapper = await setup()
     const badge = rows(wrapper)[0]!.find('.stage-badge')
     expect(badge.text()).toBe('Bruta')
-    expect(badge.attributes('title')).toBe('Versão 2 · validada/fontes/2/h1_a.csv')
+    expect(badge.attributes('title')).toBe('Versão 1 · bruta/fontes/2/h1_a.csv')
     expect(rows(wrapper)[2]!.find('.stage-badge').text()).toBe('Publicada')
   })
   it('filtra a tabela ao clicar em um card e limpa ao clicar de novo', async () => {
@@ -222,6 +225,78 @@ describe('cards por etapa do bucket', () => {
     await card(wrapper, 'Bruta').trigger('click')
     expect(rows(wrapper)).toHaveLength(3)
     expect(rows(wrapper)[2]!.find('.stage-badge').text()).toBe('Sem etapa')
+  })
+})
+
+describe('compatibilidade com versões antigas em validada/', () => {
+  beforeEach(() => {
+    stagesResponse = async () => ({
+      data: stagesData.map((stage) =>
+        stage.fileId === 1
+          ? { ...stage, versionNumber: 2, location: 'validada/fontes/2/h1_a.csv' }
+          : stage,
+      ),
+    })
+  })
+
+  it('confirma a versão tratada pelo relatório e mantém o arquivo no grupo Bruta', async () => {
+    validationResponse = async () => ({
+      data: { status: 'VALIDO', validRecords: 399, rejectedRecords: 0 },
+    })
+    const wrapper = await setup()
+    expect(rows(wrapper)[0]!.find('.stage-badge').text()).toBe('Tratada')
+    expect(rows(wrapper)[0]!.find('.stage-badge').attributes('title')).toContain(
+      'aprovação integral confirmada',
+    )
+    expect(cards(wrapper).map((c) => c.find('.stage-count').text())).toEqual(['3', '0', '1', '1'])
+    await card(wrapper, 'Tratada').trigger('click')
+    expect(rows(wrapper)).toHaveLength(1)
+    await card(wrapper, 'Bruta').trigger('click')
+    expect(rows(wrapper)).toHaveLength(3)
+    expect(rows(wrapper)[0]!.find('.stage-badge').text()).toBe('Tratada')
+    expect(axios.get).not.toHaveBeenCalledWith('/arquivos/2/validacao')
+    expect(axios.get).not.toHaveBeenCalledWith('/arquivos/3/validacao')
+  })
+
+  it('identifica a validação parcial antiga sem declarar aprovação integral ou mover a versão', async () => {
+    validationResponse = async () => ({
+      data: { status: 'PARCIAL', validRecords: 619, rejectedRecords: 1 },
+    })
+    quarantinesResponse = async () => ({
+      data: { ...emptyQuarantines, content: [quarantine()], totalElements: 1, totalPages: 1 },
+    })
+    const wrapper = await setup()
+    expect(rows(wrapper)[0]!.find('.stage-badge').text()).toBe('Validação parcial · legado')
+    expect(rows(wrapper)[0]!.find('.quarantine-link').text()).toBe('Quarentena parcial')
+    expect(cards(wrapper).map((c) => c.find('.stage-count').text())).toEqual(['3', '1', '0', '1'])
+    expect(wrapper.find('.legacy-stage-note').text()).toContain('1 arquivo(s) antigo(s)')
+    expect(wrapper.text()).not.toContain('sem versão registrada')
+    await card(wrapper, 'Quarentena').trigger('click')
+    expect(rows(wrapper)).toHaveLength(1)
+  })
+
+  it.each(['indisponível', 'inconsistente'])(
+    'não presume tratamento com relatório %s',
+    async (condition) => {
+      validationResponse = async () => {
+        if (condition === 'indisponível') throw new Error('Relatório indisponível')
+        return { data: { status: 'VALIDO', validRecords: 10, rejectedRecords: 1 } }
+      }
+      const wrapper = await setup()
+      expect(rows(wrapper)).toHaveLength(3)
+      expect(rows(wrapper)[0]!.find('.stage-badge').text()).toBe('Etapa não confirmada')
+      expect(card(wrapper, 'Tratada').find('.stage-count').text()).toBe('0')
+      expect(wrapper.find('.legacy-stage-note').exists()).toBe(true)
+    },
+  )
+
+  it('prioriza a etapa explícita da API e não consulta relatórios das versões atuais', async () => {
+    stagesResponse = async () => ({
+      data: stagesData.map((stage) => ({ ...stage, status: 'TRATADA' })),
+    })
+    const wrapper = await setup()
+    expect(rows(wrapper).every((row) => row.find('.stage-badge').text() === 'Tratada')).toBe(true)
+    expect(axios.get).not.toHaveBeenCalledWith('/arquivos/1/validacao')
   })
 })
 

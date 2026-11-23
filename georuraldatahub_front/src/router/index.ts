@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { can, type Permission } from '@/access/session'
+import { allowedNavigation, can, type Permission } from '@/access/session'
+import { isAuthenticated, keycloakEnabled } from '@/access/keycloak'
 
 declare module 'vue-router' {
   interface RouteMeta {
@@ -61,6 +62,12 @@ export function checkRouteAccess(permission?: Permission) {
 }
 const router = createRouter({ history: createWebHistory(import.meta.env.BASE_URL), routes })
 router.beforeEach(async (to) => {
+  if (keycloakEnabled) {
+    // Sem login, só a tela de login; logado, a tela de login leva à primeira página permitida.
+    if (!isAuthenticated()) return to.name === 'login' ? true : { name: 'login' }
+    if (to.name === 'login') return allowedNavigation()[0]?.to ?? { name: 'access-required' }
+    return checkRouteAccess(to.meta.permission)
+  }
   if (import.meta.env.DEV) {
     const { restoreDevelopmentSession } = await import('@/access/developmentSession')
     await restoreDevelopmentSession()

@@ -9,6 +9,8 @@ import axios from 'axios'
 import Dictionaries from '@/views/DictionariesView.vue'
 import Sources from '@/views/SourcesView.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import DictionaryTemplate from '@/components/DictionaryTemplate.vue'
+import PageOutlet from '@/components/PageOutlet.vue'
 import { setSessionUser } from '@/access/session'
 import type { Dictionary } from '@/services/contracts'
 
@@ -67,21 +69,34 @@ afterEach(() => {
   vi.unstubAllGlobals()
   document.body.innerHTML = ''
 })
-async function setup(path = '/dictionaries?source=2', view = Dictionaries) {
+async function setup(path = '/dictionaries?source=2', view = Dictionaries, cached = false) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
-      { path: '/dictionaries', component: Dictionaries },
-      { path: '/sources', component: view === Sources ? Sources : Empty },
+      { path: '/dictionaries', component: Dictionaries, meta: { permission: 'dictionaries.read' } },
+      {
+        path: '/sources',
+        component: view === Sources ? Sources : Empty,
+        meta: { permission: 'sources.read' },
+      },
     ],
   })
   await router.push(path)
-  const root = mount(defineComponent({ template: '<router-view />' }), {
-    attachTo: document.body,
-    global: {
-      plugins: [router, createVuetify({ components, directives, theme: { defaultTheme: 'dark' } })],
+  const root = mount(
+    defineComponent({
+      components: { PageOutlet },
+      template: cached ? '<PageOutlet />' : '<router-view />',
+    }),
+    {
+      attachTo: document.body,
+      global: {
+        plugins: [
+          router,
+          createVuetify({ components, directives, theme: { defaultTheme: 'dark' } }),
+        ],
+      },
     },
-  })
+  )
   await flushPromises()
   const wrapper = root.findComponent(view)
   return { wrapper, router }
@@ -279,5 +294,56 @@ describe('source discovery and dictionary shortcuts', () => {
     expect(wrapper.find('.source-row a[href="/dictionaries?source=2"]').exists()).toBe(true)
     await wrapper.find('input').setValue('inexistente')
     expect(wrapper.text()).toContain('Nenhuma fonte encontrada')
+  })
+})
+
+describe('applying official dictionary suggestions', () => {
+  it('protects unsaved rules and persists a template only after saving the editor', async () => {
+    const { wrapper } = await setup()
+    await button(wrapper, 'Novo dicionário').trigger('click')
+    await input(wrapper, 'Nome do campo 1').setValue('meu_campo')
+    const suggestion = {
+      name: 'Modelo Biomas',
+      description: 'Edição 2025',
+      rules: [{ name: 'NM_BIOMA', type: 'STRING', required: true, unique: false, domain: [] }],
+    }
+    wrapper.findComponent(DictionaryTemplate).vm.$emit('apply', suggestion)
+    await flushPromises()
+    const confirm = wrapper.findAllComponents(ConfirmDialog)[1]!
+    expect(confirm.props('modelValue')).toBe(true)
+    expect(input(wrapper, 'Nome do campo 1').element).toHaveProperty('value', 'meu_campo')
+    expect(axios.post).not.toHaveBeenCalled()
+    confirm.vm.$emit('update:modelValue', false)
+    confirm.vm.$emit('confirm')
+    await flushPromises()
+    expect(input(wrapper, 'Nome do campo 1').element).toHaveProperty('value', 'NM_BIOMA')
+    expect(axios.post).not.toHaveBeenCalled()
+    vi.mocked(axios.post).mockResolvedValue({
+      data: { ...draft, ...suggestion, id: 12, version: 3 },
+    })
+    await button(wrapper, 'Salvar dicionário').trigger('click')
+    await flushPromises()
+    expect(axios.post).toHaveBeenCalledExactlyOnceWith('/fontes/2/dicionarios', suggestion)
+  })
+})
+
+describe('cached dictionary navigation', () => {
+  it('does not restore edits that were explicitly discarded when leaving', async () => {
+    const { wrapper, router } = await setup('/dictionaries?source=2', Dictionaries, true)
+    await button(wrapper, 'Editar').trigger('click')
+    await input(wrapper, 'Nome do campo 1').setValue('descartado')
+    const navigation = router.push('/sources')
+    await flushPromises()
+    const confirm = wrapper.findAllComponents(ConfirmDialog)[1]!
+    confirm.vm.$emit('update:modelValue', false)
+    confirm.vm.$emit('confirm')
+    await navigation
+    await flushPromises()
+    const requests = vi.mocked(axios.get).mock.calls.length
+    await router.push('/dictionaries?source=2')
+    await flushPromises()
+    expect(input(wrapper, 'Nome do campo 1').element).toHaveProperty('value', 'codigo')
+    expect(axios.get).toHaveBeenCalledTimes(requests)
+    expect(axios.put).not.toHaveBeenCalled()
   })
 })

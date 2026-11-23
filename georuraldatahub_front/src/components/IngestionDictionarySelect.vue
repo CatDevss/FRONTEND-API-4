@@ -54,7 +54,8 @@
         </p>
       </div>
       <p v-else class="dictionary-description" role="status">
-        Solicite ao Gestor um dicionário para esta fonte antes de receber dados.
+        Esta fonte ainda não possui dicionário. Gere um a partir do arquivo ou solicite o cadastro
+        ao Gestor.
       </p>
     </template>
   </div>

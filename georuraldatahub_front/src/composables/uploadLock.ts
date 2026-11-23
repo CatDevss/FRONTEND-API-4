@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue'
+import { ref } from 'vue'
 import axios from 'axios'
 import { can, currentUserId } from '@/access/session'
 import {
@@ -34,16 +34,6 @@ export const uploadSnackbarVisible = ref(false)
 export const uploadSnackbarMessage = ref('')
 
 let controller: AbortController | null = null
-
-// Progresso geral (0 a 100), somando os arquivos já concluídos + o andamento do atual
-export const overallProgress = computed(() => {
-  if (totalFiles.value === 0) return 0
-  const perFile = 100 / totalFiles.value
-  return Math.min(
-    100,
-    Math.round(completedFiles.value * perFile + (currentFileProgress.value * perFile) / 100),
-  )
-})
 
 export function cancelUpload() {
   controller?.abort()

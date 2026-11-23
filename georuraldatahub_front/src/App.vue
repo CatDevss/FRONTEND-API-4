@@ -87,7 +87,7 @@
           compact
           :class="{ 'mb-5': $route.name !== 'home' }"
         />
-        <RouterView :key="`${sessionUser?.id}-${sessionUser?.userType}`" />
+        <PageOutlet />
       </v-container>
     </v-main>
 
@@ -98,6 +98,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import DevelopmentSession from '@/components/DevelopmentSession.vue'
+import PageOutlet from '@/components/PageOutlet.vue'
 import IngestionProgressPopup from '@/components/IngestionProgressPopup.vue'
 import { clearIngestionProgress } from '@/composables/ingestionProgress'
 import { selectPreviewUser } from '@/access/developmentSession'
@@ -105,8 +106,10 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import { useRoute, useRouter } from 'vue-router'
 import { allowedNavigation, sessionUser, setSessionUser, can } from '@/access/session'
 import { cancelUpload } from '@/composables/uploadLock'
+import { keycloakEnabled, logout as logoutKeycloak } from '@/access/keycloak'
 
 function logout() {
+  if (keycloakEnabled) return void logoutKeycloak()
   if (import.meta.env.DEV) selectPreviewUser(null)
   setSessionUser(null)
 }
@@ -124,7 +127,8 @@ watch(
       void router.replace(allowedNavigation()[0]?.to ?? '/access-required')
   },
 )
-const development = import.meta.env.DEV
+// A prévia de cargo só aparece em desenvolvimento e sem o login do Keycloak.
+const development = import.meta.env.DEV && !keycloakEnabled
 const sidebarCollapsed = ref(false)
 const sessionLabel = computed(() =>
   sessionUser.value ? `${sessionUser.value.name} — ${sessionUser.value.userType}` : 'Sem sessão',
@@ -141,7 +145,6 @@ const menuItems = computed(allowedNavigation)
   overflow: hidden;
 }
 
-/* Aplica margem e espaçamento nas bordas apenas para as outras views (que não são a home) */
 .v-container:not(.workspace-container) {
   padding: 32px !important;
   max-width: 1400px;

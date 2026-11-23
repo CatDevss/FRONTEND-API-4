@@ -1,9 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
+import { defineComponent, ref } from 'vue'
 import type { Feature, FeatureCollection } from 'geojson'
 import axios from 'axios'
+import EnvironmentalResultMap from '@/components/workspace/EnvironmentalResultMap.vue'
+import WorkspaceInspection from '@/components/workspace/WorkspaceInspection.vue'
 import WorkspaceMap from '@/components/workspace/WorkspaceMap.vue'
+import type { MapInspection } from '@/services/mapInspection'
 import { useWorkspaceStore } from '@/stores/workspace'
 import type { DatasetStructure, LayerReference } from '@/services/contracts'
 
@@ -15,9 +19,20 @@ const leaflet = vi.hoisted(() => {
     closePopup: vi.fn(),
     hasLayer: vi.fn((layer: unknown) => attached.has(layer)),
     on: vi.fn(),
+    latLngToContainerPoint: vi.fn((position: { lat: number; lng: number } | number[]) => ({
+      x: (Array.isArray(position) ? position[1]! : position.lng) * 100,
+      y: -(Array.isArray(position) ? position[0]! : position.lat) * 100,
+    })),
+    containerPointToLatLng: vi.fn((pixel: number[]) => ({
+      lng: pixel[0]! / 100,
+      lat: -pixel[1]! / 100,
+    })),
     invalidateSize: vi.fn(),
     remove: vi.fn(),
+    openTooltip: vi.fn(),
+    closeTooltip: vi.fn(),
   }
+  const tooltip = { setContent: vi.fn().mockReturnThis(), setLatLng: vi.fn().mockReturnThis() }
   function bounds(initial: unknown[] = []) {
     let valid = initial.length > 0
     return {
@@ -41,13 +56,14 @@ const leaflet = vi.hoisted(() => {
       }),
       remove: vi.fn().mockImplementation(() => attached.delete(group)),
       setStyle: vi.fn(),
+      bringToFront: vi.fn(),
       getBounds: vi.fn(() => bounds([1])),
     }
     groups.push(group)
     return group
   })
   const control = Object.assign(vi.fn(), {
-    layers: vi.fn(() => ({ addTo: vi.fn() })),
+    layers: vi.fn(() => ({ addTo: vi.fn(), addOverlay: vi.fn(), removeLayer: vi.fn() })),
     scale: vi.fn(() => ({ addTo: vi.fn() })),
     zoom: vi.fn(() => ({ addTo: vi.fn() })),
   })
@@ -55,11 +71,16 @@ const leaflet = vi.hoisted(() => {
     map: vi.fn(() => map),
     latLngBounds: vi.fn(bounds),
     geoJSON,
+    tooltip: vi.fn(() => tooltip),
     tileLayer: vi.fn(() => ({ addTo: vi.fn() })),
-    circleMarker: vi.fn(),
+    circleMarker: vi.fn(() => ({
+      addTo: vi.fn().mockReturnThis(),
+      remove: vi.fn(),
+      bringToFront: vi.fn(),
+    })),
     control,
   }
-  return { map, lib, groups, attached }
+  return { map, lib, groups, attached, tooltip }
 })
 vi.mock('leaflet', () => ({ default: leaflet.lib }))
 vi.mock('axios', () => ({ default: { get: vi.fn(), isAxiosError: () => true } }))
@@ -165,23 +186,32 @@ beforeEach(() => {
   }))
 })
 describe('Leaflet workspace lifecycle', () => {
-  it('passes points, lines and polygons to Leaflet, renders safe popups and toggles cached layers', async () => {
+  it('gives spaced file IDs distinct colors and keeps them when toggling or reordering layers', async () => {
+    const ids = [11, 59, 107]
+    const { workspace } = setup(ids)
+    await flushPromises()
+    const colors = ids.map((id) => workspace.colorFor(id))
+    expect(new Set(colors).size).toBe(ids.length)
+    workspace.setVisibility(11, false)
+    workspace.references = [...workspace.references].reverse()
+    await flushPromises()
+    expect(ids.map((id) => workspace.colorFor(id))).toEqual(colors)
+    workspace.setVisibility(11, true)
+    await flushPromises()
+    expect(ids.map((id) => workspace.colorFor(id))).toEqual(colors)
+  })
+
+  it('passes points, lines and polygons to Leaflet and toggles cached layers', async () => {
     const { workspace } = setup()
     await flushPromises()
     expect(leaflet.lib.geoJSON).toHaveBeenCalledOnce()
     const args = leaflet.lib.geoJSON.mock.calls[0] as unknown as [
       FeatureCollection,
       {
-        onEachFeature: (f: Feature, layer: { bindPopup: ReturnType<typeof vi.fn> }) => void
         pointToLayer: (f: Feature, position: unknown) => unknown
       },
     ]
     expect(args[0].features.map((f) => f.geometry.type)).toEqual(['Point', 'LineString', 'Polygon'])
-    const featureLayer = { bindPopup: vi.fn() }
-    args[1].onEachFeature(features.features[0]!, featureLayer)
-    const popup = featureLayer.bindPopup.mock.calls[0]![0] as HTMLElement
-    expect(popup.textContent).toContain('<img src=x onerror=alert(1)>')
-    expect(popup.querySelector('img')).toBeNull()
     args[1].pointToLayer(features.features[0]!, { lat: -25, lng: -49 })
     expect(leaflet.lib.circleMarker).toHaveBeenCalledWith(
       { lat: -25, lng: -49 },
@@ -196,6 +226,57 @@ describe('Leaflet workspace lifecycle', () => {
     expect(leaflet.groups[0]?.addTo).toHaveBeenCalledTimes(2)
     expect(axios.get).toHaveBeenCalledTimes(1)
   })
+  it('inspects every visible overlapping layer, updates visibility, and clears on dataset change', async () => {
+    const { workspace, wrapper } = setup([11, 12])
+    await flushPromises()
+    const click = leaflet.map.on.mock.calls.find((call) => call[0] === 'click')![1]
+    click({ latlng: { lat: -25, lng: -49 } })
+    const result = () => wrapper.emitted('inspect')?.slice(-1)[0]?.[0] as MapInspection | null
+    expect(result()?.groups.map((group) => group.fileId)).toEqual([11, 12])
+    expect(result()?.groups.every((group) => group.features.length === 3)).toBe(true)
+    expect(result()?.groups[0]?.features[0]?.properties?.nome).toContain('<img')
+    workspace.setVisibility(12, false)
+    await flushPromises()
+    expect(result()?.groups.map((group) => group.fileId)).toEqual([11])
+    click({ latlng: { lat: 0, lng: 0 } })
+    expect(result()?.groups).toEqual([])
+    click({ latlng: { lat: -25, lng: -49 } })
+    wrapper.vm.closeInspection()
+    expect(result()).toBeNull()
+    click({ latlng: { lat: -25, lng: -49 } })
+    await workspace.selectDataset(2)
+    expect(result()).toBeNull()
+  })
+
+  it('updates the clicked location when pending layers finish without another click', async () => {
+    const slow = deferred()
+    vi.mocked(axios.get).mockReturnValue(slow.promise)
+    const { wrapper } = setup([11])
+    const click = leaflet.map.on.mock.calls.find((call) => call[0] === 'click')![1]
+    click({ latlng: { lat: -25, lng: -49 } })
+    const result = () => wrapper.emitted('inspect')?.slice(-1)[0]?.[0] as MapInspection
+    expect(result().pending).toEqual(['Camada 11'])
+    slow.resolve({ data: features })
+    await flushPromises()
+    expect(result().pending).toEqual([])
+    expect(result().groups).toHaveLength(1)
+    expect(axios.get).toHaveBeenCalledOnce()
+  })
+
+  it('reports a failed layer instead of presenting an incomplete query as complete', async () => {
+    const slow = deferred()
+    vi.mocked(axios.get).mockReturnValue(slow.promise)
+    const { wrapper } = setup([11])
+    const click = leaflet.map.on.mock.calls.find((call) => call[0] === 'click')![1]
+    click({ latlng: { lat: -25, lng: -49 } })
+    slow.resolve({ data: null as unknown as FeatureCollection })
+    await flushPromises()
+    const result = wrapper.emitted('inspect')?.slice(-1)[0]?.[0] as MapInspection
+    expect(result.failed).toEqual(['Camada 11'])
+    expect(result.pending).toEqual([])
+    expect(result.groups).toEqual([])
+  })
+
   it('aborts and ignores a late geometry response after changing dataset', async () => {
     const slow = deferred()
     vi.mocked(axios.get).mockImplementation(async (path) =>
@@ -302,5 +383,204 @@ describe('Leaflet workspace lifecycle', () => {
     expect(leaflet.attached.size).toBe(1)
     expect(workspace.isVisible(11)).toBe(true)
     expect(leaflet.map.invalidateSize).toHaveBeenCalled()
+  })
+})
+
+describe('cached map navigation', () => {
+  it('retains the Leaflet instance and GeoJSON while away and resizes on return', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const workspace = useWorkspaceStore()
+    workspace.selectedDatasetId = 1
+    workspace.structure = tree(1, [11])
+    workspace.references = [reference(11)]
+    workspace.setVisibility(11, true)
+    const host = mount(
+      defineComponent({
+        components: { WorkspaceMap },
+        setup() {
+          return { shown: ref(true) }
+        },
+        template:
+          '<button @click="shown = !shown">Trocar página</button><KeepAlive><WorkspaceMap v-if="shown" :visible="true" /></KeepAlive>',
+      }),
+      { global: { plugins: [pinia], stubs: { VChip: true, VAlert: true } } },
+    )
+    await flushPromises()
+    const instance = host.findComponent(WorkspaceMap).element
+    const requests = vi.mocked(axios.get).mock.calls.length
+    await host.find('button').trigger('click')
+    await flushPromises()
+    expect(leaflet.map.remove).not.toHaveBeenCalled()
+    const resizes = leaflet.map.invalidateSize.mock.calls.length
+    window.dispatchEvent(new Event('resize'))
+    expect(leaflet.map.invalidateSize).toHaveBeenCalledTimes(resizes)
+    await host.find('button').trigger('click')
+    await flushPromises()
+    expect(host.findComponent(WorkspaceMap).element).toBe(instance)
+    expect(leaflet.lib.map).toHaveBeenCalledTimes(1)
+    expect(axios.get).toHaveBeenCalledTimes(requests)
+    expect(leaflet.map.invalidateSize.mock.calls.length).toBeGreaterThan(resizes)
+  })
+})
+
+describe('indicator map matches workspace cartography', () => {
+  function resultMap() {
+    const polygon = features.features[2]!
+    return mount(EnvironmentalResultMap, {
+      props: {
+        data: {
+          type: 'FeatureCollection',
+          features: [
+            { ...polygon, properties: { papel: 'analise' } },
+            { ...polygon, properties: { papel: 'ICV' } },
+          ],
+        },
+      },
+      global: { stubs: { VBtn: { template: '<button><slot /></button>' } } },
+    })
+  }
+  it('uses dark streets, satellite, metric scale and bottom-right navigation', async () => {
+    const wrapper = resultMap()
+    await flushPromises()
+    expect(leaflet.lib.map).toHaveBeenCalledWith(expect.anything(), {
+      preferCanvas: true,
+      zoomControl: false,
+    })
+    expect(leaflet.lib.tileLayer).toHaveBeenCalledWith(
+      expect.stringContaining('openstreetmap'),
+      expect.objectContaining({ className: 'map-tiles-dark', maxZoom: 19 }),
+    )
+    expect(leaflet.lib.tileLayer).toHaveBeenCalledWith(
+      expect.stringContaining('World_Imagery'),
+      expect.anything(),
+    )
+    expect(leaflet.lib.control.layers).toHaveBeenCalledWith(
+      expect.objectContaining({ 'Ruas (escuro)': expect.anything(), Satélite: expect.anything() }),
+      undefined,
+      { position: 'bottomright' },
+    )
+    expect(leaflet.lib.control.zoom).toHaveBeenCalledWith({ position: 'bottomright' })
+    expect(leaflet.lib.control.scale).toHaveBeenCalledWith({ imperial: false })
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Ver Paraná')!
+      .trigger('click')
+    expect(leaflet.map.fitBounds).toHaveBeenLastCalledWith(expect.anything(), { padding: [24, 24] })
+  })
+  it('inspects only visible contribution layers and supports opacity', async () => {
+    const wrapper = resultMap()
+    await flushPromises()
+    const click = leaflet.map.on.mock.calls.find((c) => c[0] === 'click')![1]
+    click({ latlng: { lat: -25, lng: -49 } })
+    await flushPromises()
+    const inspection = () =>
+      wrapper.findComponent(WorkspaceInspection).props('result') as MapInspection
+    expect(inspection().groups.map((g) => g.name)).toEqual([
+      'Área de análise',
+      'Vegetação no recorte',
+    ])
+    leaflet.attached.delete(leaflet.groups[1])
+    leaflet.map.on.mock.calls.find((c) => c[0] === 'overlayadd overlayremove')![1]()
+    await flushPromises()
+    expect(inspection().groups.map((g) => g.name)).toEqual(['Área de análise'])
+    await wrapper.find('input[aria-label="Opacidade de Vegetação no recorte"]').setValue('40')
+    const style = leaflet.groups[1]!.setStyle.mock.calls.slice(-1)[0]![0]({
+      geometry: { type: 'Polygon' },
+    })
+    expect(style.opacity).toBe(0.4)
+    wrapper.findComponent(WorkspaceInspection).vm.$emit('close')
+    await flushPromises()
+    expect(wrapper.findComponent(WorkspaceInspection).exists()).toBe(false)
+  })
+})
+
+describe('balão do imóvel ao passar o mouse', () => {
+  const imoveis: FeatureCollection = {
+    type: 'FeatureCollection',
+    features: [
+      {
+        type: 'Feature',
+        geometry: {
+          type: 'Polygon',
+          coordinates: [
+            [
+              [-50, -26],
+              [-48, -26],
+              [-48, -24],
+              [-50, -24],
+              [-50, -26],
+            ],
+          ],
+        },
+        properties: {
+          cod_imovel: 'PR-4103800-ABC',
+          nom_munici: 'Cambira',
+          num_area: 12.5,
+          camada: 'CAMADA-OCULTA',
+          arquivo: 'ARQUIVO-OCULTO',
+          nom_tema: 'TEMA-OCULTO',
+          cod_tema: 'COD-OCULTO',
+        },
+      },
+    ],
+  }
+  let frame: FrameRequestCallback | null = null
+  function mouseAt(lat: number, lng: number) {
+    const move = leaflet.map.on.mock.calls.find((call) => call[0] === 'mousemove')![1]
+    move({ latlng: { lat, lng } })
+    frame?.(0)
+    frame = null
+  }
+  function shown() {
+    const content = leaflet.tooltip.setContent.mock.calls.slice(-1)[0]![0] as HTMLElement
+    return content.textContent ?? ''
+  }
+  beforeEach(() => {
+    frame = null
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      frame = callback
+      return 1
+    })
+    vi.stubGlobal('cancelAnimationFrame', vi.fn())
+  })
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('mostra os dados do imóvel sem camada, arquivo, nom_tema e cod_tema', async () => {
+    vi.mocked(axios.get).mockResolvedValue({ data: imoveis })
+    setup()
+    await flushPromises()
+    mouseAt(-25, -49)
+    expect(leaflet.map.openTooltip).toHaveBeenCalled()
+    expect(shown()).toContain('PR-4103800-ABC')
+    expect(shown()).toContain('Cambira')
+    expect(shown()).toContain('12,5')
+    for (const hidden of ['CAMADA-OCULTA', 'ARQUIVO-OCULTO', 'TEMA-OCULTO', 'COD-OCULTO'])
+      expect(shown()).not.toContain(hidden)
+  })
+  it('esconde o balão ao sair do imóvel, ao sair do mapa e ao desligar a camada', async () => {
+    vi.mocked(axios.get).mockResolvedValue({ data: imoveis })
+    const { workspace } = setup()
+    await flushPromises()
+    mouseAt(-25, -49)
+    leaflet.map.closeTooltip.mockClear()
+    mouseAt(0, 0)
+    expect(leaflet.map.closeTooltip).toHaveBeenCalledTimes(1)
+    mouseAt(-25, -49)
+    leaflet.map.closeTooltip.mockClear()
+    leaflet.map.on.mock.calls.find((call) => call[0] === 'mouseout')![1]()
+    expect(leaflet.map.closeTooltip).toHaveBeenCalledTimes(1)
+    mouseAt(-25, -49)
+    leaflet.map.closeTooltip.mockClear()
+    workspace.setVisibility(11, false)
+    await flushPromises()
+    expect(leaflet.map.closeTooltip).toHaveBeenCalled()
+  })
+  it('não mostra balão para feições que não são imóveis do CAR', async () => {
+    setup()
+    await flushPromises()
+    mouseAt(-25, -49)
+    expect(leaflet.lib.tooltip).not.toHaveBeenCalled()
+    expect(leaflet.map.openTooltip).not.toHaveBeenCalled()
   })
 })

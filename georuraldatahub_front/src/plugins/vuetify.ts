@@ -4,10 +4,7 @@ import { createVuetify } from 'vuetify'
 
 export default createVuetify({
   theme: {
-    // Fixa o tema escuro sempre: o glassmorphism "espaço" foi desenhado
-    // para ele. Sem isso, o Vuetify usa 'system' por padrão e segue o
-    // modo claro/escuro do SO do usuário, o que quebra o contraste dos
-    // cards de vidro (ver histórico: mesmo bug já corrigido para o claro).
+    // Mantém o contraste dos componentes com o tema escuro.
     defaultTheme: 'dark',
     themes: {
       dark: {

@@ -20,7 +20,12 @@ type ReportRecord = ValidationReport['records'][number]
 const rejected = (recordIndex: number, errors: string[], rawContent = `{"id":${recordIndex}}`) =>
   ({ recordIndex, rawContent, valid: false, errors }) satisfies ReportRecord
 const approved = (recordIndex: number) =>
-  ({ recordIndex, rawContent: `{"id":${recordIndex}}`, valid: true, errors: [] }) satisfies ReportRecord
+  ({
+    recordIndex,
+    rawContent: `{"id":${recordIndex}}`,
+    valid: true,
+    errors: [],
+  }) satisfies ReportRecord
 function reportOf(records: ReportRecord[]): ValidationReport {
   return {
     status: 'PARCIAL',
@@ -55,7 +60,11 @@ describe('quarantine correction helpers', () => {
   })
   it('splits file-level errors from rejected records and ignores approved ones', () => {
     const targets = correctionTargets(
-      reportOf([rejected(-1, ['MALFORMED_FILE: x']), approved(0), rejected(1, ['REQUIRED_FIELD: a'])]),
+      reportOf([
+        rejected(-1, ['MALFORMED_FILE: x']),
+        approved(0),
+        rejected(1, ['REQUIRED_FIELD: a']),
+      ]),
     )
     expect(targets.fileErrors.map((entry) => entry.recordIndex)).toEqual([-1])
     expect(targets.rejected.map((entry) => entry.recordIndex)).toEqual([1])
@@ -159,10 +168,19 @@ describe('QuarantineCorrectionDialog', () => {
     vi.unstubAllGlobals()
     document.body.innerHTML = ''
   })
-  function mountDialog(props: Partial<InstanceType<typeof QuarantineCorrectionDialog>['$props']> = {}) {
+  function mountDialog(
+    props: Partial<InstanceType<typeof QuarantineCorrectionDialog>['$props']> = {},
+  ) {
     const w = mount(QuarantineCorrectionDialog, {
       attachTo: document.body,
-      props: { modelValue: true, fileName: 'municipios.geojson', report: null, loading: false, error: '', ...props },
+      props: {
+        modelValue: true,
+        fileName: 'municipios.geojson',
+        report: null,
+        loading: false,
+        error: '',
+        ...props,
+      },
       global: { plugins: [createVuetify({ components, directives })] },
     })
     cleanups.push(() => w.unmount())
@@ -175,7 +193,11 @@ describe('QuarantineCorrectionDialog', () => {
       report: reportOpenWith([
         rejected(-1, ['UNSUPPORTED_FORMAT: shp']),
         approved(0),
-        rejected(4, ['REQUIRED_FIELD: nome', 'INVALID_TYPE: area deve ser número'], '{"area":"abc"}'),
+        rejected(
+          4,
+          ['REQUIRED_FIELD: nome', 'INVALID_TYPE: area deve ser número'],
+          '{"area":"abc"}',
+        ),
       ]),
     })
     await flushPromises()
@@ -205,7 +227,9 @@ describe('QuarantineCorrectionDialog', () => {
   })
 
   it('paginates rejected records on the client', async () => {
-    const records = Array.from({ length: 25 }, (_, index) => rejected(index, ['REQUIRED_FIELD: nome']))
+    const records = Array.from({ length: 25 }, (_, index) =>
+      rejected(index, ['REQUIRED_FIELD: nome']),
+    )
     const w = mountDialog({ report: reportOpenWith(records) })
     await flushPromises()
     expect(text()).toContain('Registros rejeitados (25)')
@@ -220,7 +244,9 @@ describe('QuarantineCorrectionDialog', () => {
   it('shows loading, error with retry and unavailable report states', async () => {
     const w = mountDialog({ loading: true })
     await flushPromises()
-    expect(document.body.querySelector('[aria-label="Carregando relatório de validação"]')).not.toBeNull()
+    expect(
+      document.body.querySelector('[aria-label="Carregando relatório de validação"]'),
+    ).not.toBeNull()
     expect(text()).not.toContain('Relatório indisponível')
     await w.setProps({ loading: false, error: 'Falha ao carregar.' })
     expect(text()).toContain('Falha ao carregar.')

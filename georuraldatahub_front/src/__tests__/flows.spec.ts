@@ -115,7 +115,7 @@ describe('contract dependent flows', () => {
   it('sends dataset userId rather than a sourceId', async () => {
     vi.mocked(axios.post).mockResolvedValue({ data: {} })
     const wrapper = mount(DataSetDialog, { props: { userId: 1, modelValue: true }, global })
-    // The creation form sends the current session identity with the name.
+    // O formulário envia o usuário da sessão junto com o nome.
     const vm = wrapper.vm as unknown as { dataSet: { name: string }; save: () => Promise<void> }
     vm.dataSet.name = 'Novo conjunto'
     await vm.save()
@@ -279,6 +279,10 @@ describe('ingestion by source and session', () => {
       'csv',
       'geojson',
       'json',
+      'zip',
+      'gpkg',
+      'tif',
+      'tiff',
     ])
     expect(w.findComponent({ name: 'CollectionForm' }).exists()).toBe(false)
     expect(w.find('select[label="Responsável pela ingestão"]').exists()).toBe(false)

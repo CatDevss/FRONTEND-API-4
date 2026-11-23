@@ -6,7 +6,7 @@ export type Role = (typeof roles)[number]
 export type SessionUser = Omit<IngestionUser, 'userType'> & { userType: Role }
 const user = ref<SessionUser | null>(null)
 
-// Integration boundary for the login team. This module neither authenticates nor persists credentials.
+// Ponto de integração com o login; não armazena credenciais.
 export function setSessionUser(value: IngestionUser | null) {
   const next =
     value &&
@@ -21,7 +21,7 @@ export function setSessionUser(value: IngestionUser | null) {
           userType: value.userType as Role,
         }
       : null
-  // Re-selecting the same preview must not remount pages or cancel active work.
+  // Selecionar a mesma sessão preserva a página e as operações em andamento.
   if (JSON.stringify(user.value) !== JSON.stringify(next)) user.value = next
 }
 export const sessionUser = readonly(user)
@@ -34,6 +34,7 @@ export const permissionRoles = {
   'sources.update': ['GESTOR', 'OPERADOR', 'ANALISTA'],
   'dictionaries.read': ['GESTOR', 'OPERADOR', 'ANALISTA', 'AUDITOR'],
   'dictionaries.manage': ['GESTOR'],
+  'dictionaries.generate': ['GESTOR', 'OPERADOR'],
   'datasets.read': ['GESTOR', 'OPERADOR', 'ANALISTA', 'AUDITOR'],
   'datasets.manage': ['OPERADOR'],
   'map.read': ['GESTOR', 'OPERADOR', 'ANALISTA', 'AUDITOR'],
