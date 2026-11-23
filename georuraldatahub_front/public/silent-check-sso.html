@@ -1,0 +1,9 @@
+<!doctype html>
+<html>
+  <body>
+    <script>
+      // Usado pelo keycloak-js para checar o login em um iframe invisível (check-sso).
+      parent.postMessage(location.href, location.origin)
+    </script>
+  </body>
+</html>
